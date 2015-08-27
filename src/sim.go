@@ -27,7 +27,7 @@ type data struct {
 }
 
 type manifest struct {
-    message 
+    message
 }
 
 type fibentry struct {
@@ -120,13 +120,6 @@ func main() {
     msg := interest_CreateSimple("lci:/foo/bar");
     consumer.SendInterest(msg);
 
-
-//   id string
-//    faces []int
-//   fib fibtable
-//    cs cache
-//    pit pittable
-//
     for i := 1; i <= simulationTime; i++ {
         fmt.Printf("Time = %d...\n", i);
 
