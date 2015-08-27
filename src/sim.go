@@ -58,6 +58,10 @@ type consumer struct {
     forwarder
 }
 
+func (c consumer) SendInterest(msg interest) {
+    fmt.Println("sending interest");
+}
+
 func (c consumer) ReceiveInterest(msg interest) {
     fmt.Println("received interest");
 }
@@ -103,6 +107,17 @@ func main() {
     eventA.val = 5;
     events.PushBack(eventA);
 
+    // network elements
+    fwd1 := forwarder{"fwd1", []int{1, 2}, fibtable{}, cache{}, pittable{}};
+    consumer := consumer{fwd1};
+    consumer.SendInterest(interest{message{name: "lci:/foo/bar", payload: []uint8{0x00}}});
+
+//   id string
+//    faces []int
+//   fib fibtable
+//    cs cache
+//    pit pittable
+//
     for i := 1; i <= simulationTime; i++ {
         fmt.Printf("Time = %d...\n", i);
 
