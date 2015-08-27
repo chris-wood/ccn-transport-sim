@@ -16,6 +16,12 @@ type interest struct {
     keyIdRestriction []uint8
 }
 
+func interest_CreateSimple(name string) (interest) {
+    msg := message{name: name, payload: []uint8{0x00}};
+    interest := interest{message: msg, hashRestriction: []uint8{0x00}, keyIdRestriction: []uint8{0x00}};
+    return interest;
+}
+
 type data struct {
     message
 }
@@ -110,7 +116,10 @@ func main() {
     // network elements
     fwd1 := forwarder{"fwd1", []int{1, 2}, fibtable{}, cache{}, pittable{}};
     consumer := consumer{fwd1};
-    consumer.SendInterest(interest{message{name: "lci:/foo/bar", payload: []uint8{0x00}}});
+    //consumer.SendInterest(interest{message{name: "lci:/foo/bar", payload: []uint8{0x00}}});
+    msg := interest_CreateSimple("lci:/foo/bar");
+    consumer.SendInterest(msg);
+
 
 //   id string
 //    faces []int
