@@ -4,7 +4,7 @@ import "fmt"
 import "os"
 import "strconv"
 import "container/list"
-import "encoding/json"
+// import "encoding/json"
 
 type Message interface {
     GetName() string
@@ -18,11 +18,11 @@ type Interest struct {
     KeyIdRestriction []uint8 `json:"keyIdRestriction"`
 }
 
-func (i Interest) getName() (string) {
+func (i Interest) GetName() (string) {
     return i.Name;
 }
 
-func (i Interest) getPayload() ([]uint8) {
+func (i Interest) GetPayload() ([]uint8) {
     return i.Payload;
 }
 
@@ -36,11 +36,11 @@ type Data struct {
     Payload []uint8 `json:"payload"`
 }
 
-func (d Data) getName() (string) {
+func (d Data) GetName() (string) {
     return d.Name;
 }
 
-func (d Data) getPayload() ([]uint8) {
+func (d Data) GetPayload() ([]uint8) {
     return d.Payload;
 }
 
@@ -87,7 +87,9 @@ type cache struct {
 }
 
 type link struct {
-    Stage list.List `json:"stage"`
+    Stage []StagedMessage `json:"stage"`
+    Size int `json:"size"`
+
     Pfail float32 `json:"pfail"`
     Rate float32 `json:"rate"`
 }
@@ -97,25 +99,29 @@ func (l link) txTime(size int) (int) {
     return pktTime;
 }
 
+func (l link) PushBack(msg StagedMessage) {
+    if (l.Size < len(l.Stage)) {
+        l.Stage[l.Size] = msg;
+        l.Size++;
+    } else {
+        // TODO: drop, error, something
+    }
+}
+
 type queue struct {
-    Fifo list.List `json:"fifo"`
-    Capacity int `json:"capacity"`
+    Fifo []Message `json:"fifo"`
+    Size int `json:"size"`
 }
 
-func (q queue) PushBackInterest(msg Interest) {
-    q.Fifo.PushBack(msg);
-    // fmt.Print("Inserting: ");
-    //
-    // json, _ := json.Marshal(msg)
-    // fmt.Println(string(json));
-}
-
-func (q queue) PushBackData(msg Data) {
-    q.Fifo.PushBack(msg);
-}
-
-func (q queue) PushBackManifest(msg Manifest) {
-    q.Fifo.PushBack(msg);
+func (q queue) PushBack(msg Message) {
+    if (q.Size < len(q.Fifo)) {
+        q.Fifo[q.Size] = msg;
+        q.Size++;
+        fmt.Println("INSERTED!");
+    } else {
+        fmt.Println("FAILED TO INSERT");
+        // TODO: drop, error, something
+    }
 }
 
 type Forwarder struct {
@@ -148,16 +154,11 @@ func (c Consumer) Tick(time int) {
         faceId := c.Faces[i];
         link := c.FaceLinks[faceId];
 
-        lj, _ := json.Marshal(link.Stage);
-        fmt.Println(string(lj));
-
-        for e := link.Stage.Front(); e != nil; e = e.Next() {
-            fmt.Printf("Moving message at %d\n", time);
-            msg := e.Value.(StagedMessage);
+        for j := 0; j < link.Size; i++ {
+            msg := link.Stage[j];
             if (msg.TicksLeft > 0) {
                 msg.TicksLeft--;
             } else {
-                link.Stage.Remove(e);
                 // TODO: drop it in the recipient queue here...
             }
         }
@@ -166,30 +167,29 @@ func (c Consumer) Tick(time int) {
     // Handle queue movement...
     for i := 0; i < len(c.Faces); i++ { // length == 1
         faceId := c.Faces[i];
+        fmt.Printf("looking at faceid %d\n", faceId);
         queue := c.FaceQueues[faceId];
         link := c.FaceLinks[faceId];
-        fmt.Print("stage = ");
-        fmt.Println(link.Stage);
-        fmt.Print("queue = ");
-        fmt.Println(queue.Fifo);
-        fmt.Printf("queue size = %d\n", queue.Fifo.Len());
 
-        for e := queue.Fifo.Front(); e != nil; e = e.Next() {
+        fmt.Println("queue size");
+        fmt.Println(queue.Size);
+
+        for j := 0; j < queue.Size; j++ {
+            msg := queue.Fifo[j]
             // simulate processing delay
-            link.Stage.PushBack(e.Value);
-
-            fmt.Printf("link stage size = %d\n", link.Stage.Len());
-            // queue.fifo.Remove(e);
-
-            // TODO: this is not moving the message to the link staging area
+            fmt.Println("move...");
+            ticksLeft := link.txTime(len(msg.GetPayload()));
+            stagedMsg := StagedMessage{msg, ticksLeft};
+            link.PushBack(stagedMsg);
         }
     }
 }
 
 func (c Consumer) SendInterest(msg Interest) {
     defaultFace := c.Faces[0];
+    fmt.Printf("inserting into queue for face %d\n", defaultFace);
     queue := c.FaceQueues[defaultFace];
-    queue.PushBackInterest(msg);
+    queue.PushBack(msg);
 }
 
 func (c Consumer) ReceiveInterest(msg Interest) {
@@ -207,8 +207,8 @@ func (c Consumer) ReceiveManifest(msg Manifest) {
 func consumer_Create(id string) (*Consumer) {
     faceMap := make(map[int]*queue);
     faceLinkMap := make(map[int]*link);
-    fifo := &queue{*list.New(), 100000};
-    link := &link{*list.New(), 0.0, 1000}
+    fifo := &queue{make([]Message, 100), 0};
+    link := &link{make([]StagedMessage, 100), 0, 0.0, 1000}
 
     defaultFace := 1;
     faceMap[defaultFace] = fifo;
