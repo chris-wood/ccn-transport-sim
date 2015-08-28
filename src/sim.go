@@ -116,8 +116,7 @@ type queue struct {
 func (q queue) PushBack(msg Message) {
     if (q.Size < len(q.Fifo)) {
         q.Fifo[q.Size] = msg;
-        q.Size++;
-        fmt.Println("INSERTED!");
+        q.Size = q.Size + 1;
     } else {
         fmt.Println("FAILED TO INSERT");
         // TODO: drop, error, something
@@ -128,8 +127,8 @@ type Forwarder struct {
     Identity string
 
     Faces []int
-    FaceQueues map[int]*queue
-    FaceLinks map[int]*link
+    FaceQueues map[int]queue
+    FaceLinks map[int]link
 
     Fib *fibtable
     Cache *cache
@@ -141,7 +140,7 @@ type Consumer struct {
 }
 
 type Runnable interface {
-    Tick()
+    Tick(int)
 }
 
 func (c Consumer) Tick(time int) {
@@ -154,8 +153,9 @@ func (c Consumer) Tick(time int) {
         faceId := c.Faces[i];
         link := c.FaceLinks[faceId];
 
-        for j := 0; j < link.Size; i++ {
+        for j := 0; j < len(link.Stage); i++ {
             msg := link.Stage[j];
+
             if (msg.TicksLeft > 0) {
                 msg.TicksLeft--;
             } else {
@@ -167,19 +167,20 @@ func (c Consumer) Tick(time int) {
     // Handle queue movement...
     for i := 0; i < len(c.Faces); i++ { // length == 1
         faceId := c.Faces[i];
-        fmt.Printf("looking at faceid %d\n", faceId);
         queue := c.FaceQueues[faceId];
         link := c.FaceLinks[faceId];
 
-        fmt.Println("queue size");
-        fmt.Println(queue.Size);
+        fmt.Println("here...");
+        for j := 0; j < len(queue.Fifo); j++ {
+            msg := queue.Fifo[j];
+            if (msg == nil) {
+                break;
+            }
 
-        for j := 0; j < queue.Size; j++ {
-            msg := queue.Fifo[j]
             // simulate processing delay
-            fmt.Println("move...");
             ticksLeft := link.txTime(len(msg.GetPayload()));
             stagedMsg := StagedMessage{msg, ticksLeft};
+            fmt.Println("ok man");
             link.PushBack(stagedMsg);
         }
     }
@@ -187,7 +188,6 @@ func (c Consumer) Tick(time int) {
 
 func (c Consumer) SendInterest(msg Interest) {
     defaultFace := c.Faces[0];
-    fmt.Printf("inserting into queue for face %d\n", defaultFace);
     queue := c.FaceQueues[defaultFace];
     queue.PushBack(msg);
 }
@@ -205,10 +205,10 @@ func (c Consumer) ReceiveManifest(msg Manifest) {
 }
 
 func consumer_Create(id string) (*Consumer) {
-    faceMap := make(map[int]*queue);
-    faceLinkMap := make(map[int]*link);
-    fifo := &queue{make([]Message, 100), 0};
-    link := &link{make([]StagedMessage, 100), 0, 0.0, 1000}
+    faceMap := make(map[int]queue);
+    faceLinkMap := make(map[int]link);
+    fifo := queue{make([]Message, 100), 0};
+    link := link{make([]StagedMessage, 100), 0, 0.0, 1000}
 
     defaultFace := 1;
     faceMap[defaultFace] = fifo;
@@ -265,8 +265,8 @@ func main() {
     msg := Interest_CreateSimple("lci:/foo/bar");
     consumer.SendInterest(msg);
 
-    nodes := list.New()
-    nodes.PushBack(consumer);
+    nodes := make([]Runnable, 1);
+    nodes[0] = consumer;
 
     for i := 1; i <= simulationTime; i++ {
         // fmt.Printf("Time = %d...\n", i);
@@ -286,27 +286,9 @@ func main() {
         }
 
         // move each node along
-        for e := nodes.Front(); e != nil; e = e.Next() {
-            nodeValue := e.Value;
-
-            // type assertions...
-            // TODO: handle this cascade type check better
-            node, ok := nodeValue.(*Consumer);
-            if !ok {
-                node, ok := nodeValue.(*Producer);
-                if !ok {
-                    node, ok := nodeValue.(*Router);
-                    if !ok {
-                        fmt.Println("ERROR!");
-                    } else {
-                        node.Tick(i);
-                    }
-                } else {
-                    node.Tick(i);
-                }
-            } else {
-                node.Tick(i);
-            }
+        for e := 0; e < len(nodes); e++ {
+            node := nodes[e];
+            node.Tick(i);
         }
 
         // ping pong event queues
