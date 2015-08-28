@@ -233,7 +233,7 @@ func (c Consumer) ReceiveManifest(msg Manifest) {
 func consumer_Create(id string) (*Consumer) {
     faceMap := make(map[int]queue);
     faceLinkMap := make(map[int]link);
-    fifo := queue{make(chan Message, 100), 0};
+    fifo := queue{make(chan Message, 100), 10};
     link := link{make(chan StagedMessage, 10), 10, 0.0, 1000}
 
     defaultFace := 1;
