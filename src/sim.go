@@ -64,10 +64,6 @@ type StagedMessage struct {
     TicksLeft int `json:"ticksleft"`
 }
 
-func (sm *StagedMessage) Tick() {
-    sm.TicksLeft = sm.TicksLeft - 1;
-}
-
 func (sm StagedMessage) Ticks() (int) {
     return sm.TicksLeft;
 }
@@ -96,8 +92,7 @@ type cache struct {
 
 type link struct {
     Stage []StagedMessage `json:"stage"`
-    Size int `json:"size"`
-
+    Capacity int `json:"capacity"`
     Pfail float32 `json:"pfail"`
     Rate float32 `json:"rate"`
 }
@@ -107,12 +102,21 @@ func (l link) txTime(size int) (int) {
     return pktTime;
 }
 
-func (l link) PushBack(msg StagedMessage) {
-    if (l.Size < len(l.Stage)) {
-        l.Stage[l.Size] = msg;
-        l.Size++;
+type LinkFullError struct {
+    desc string
+}
+
+func (lfe LinkFullError) Error() (string) {
+    return lfe.desc;
+}
+
+func (l link) PushBack(msg StagedMessage) (link, error) {
+    var newLink link
+    if (len(l.Stage) < l.Capacity) {
+        newStage := append(l.Stage, msg);
+        return link{newStage, l.Capacity, l.Pfail, l.Rate}, nil;
     } else {
-        // TODO: drop, error, something
+        return newLink, LinkFullError{"Link full"};
     }
 }
 
@@ -164,10 +168,9 @@ func (c Consumer) Tick(time int) {
         for j := 0; j < len(link.Stage); j++ {
             msg := link.Stage[j];
             if (msg.Msg != nil) {
-                fmt.Println(msg.Ticks());
                 if (msg.Ticks() > 0) {
-                    msg.Tick();
-                    fmt.Println("here ")
+                    newMsg := StagedMessage{msg.Msg, msg.Ticks() - 1};
+                    link.Stage[j] = newMsg;
                 } else {
                     fmt.Println("OK")
                     // TODO: drop it in the recipient queue here...
@@ -194,7 +197,12 @@ func (c Consumer) Tick(time int) {
             // ticksLeft := link.txTime(len(msg.GetPayload()));
 
             stagedMsg := StagedMessage{msg, 2};
-            link.PushBack(stagedMsg);
+            newLink, err := link.PushBack(stagedMsg);
+            if err == nil {
+                c.FaceLinks[faceId] = newLink;
+            } else {
+                fmt.Println("wtf!");
+            }
         }
     }
 }
