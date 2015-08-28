@@ -64,6 +64,14 @@ type StagedMessage struct {
     TicksLeft int `json:"ticksleft"`
 }
 
+func (sm *StagedMessage) Tick() {
+    sm.TicksLeft = sm.TicksLeft - 1;
+}
+
+func (sm StagedMessage) Ticks() (int) {
+    return sm.TicksLeft;
+}
+
 type fibentry struct {
     Prefix string `json:"prefix"`
     Interfaces []int `json:"interface"`
@@ -153,13 +161,17 @@ func (c Consumer) Tick(time int) {
         faceId := c.Faces[i];
         link := c.FaceLinks[faceId];
 
-        for j := 0; j < len(link.Stage); i++ {
+        for j := 0; j < len(link.Stage); j++ {
             msg := link.Stage[j];
-
-            if (msg.TicksLeft > 0) {
-                msg.TicksLeft--;
-            } else {
-                // TODO: drop it in the recipient queue here...
+            if (msg.Msg != nil) {
+                fmt.Println(msg.Ticks());
+                if (msg.Ticks() > 0) {
+                    msg.Tick();
+                    fmt.Println("here ")
+                } else {
+                    fmt.Println("OK")
+                    // TODO: drop it in the recipient queue here...
+                }
             }
         }
     }
@@ -170,7 +182,6 @@ func (c Consumer) Tick(time int) {
         queue := c.FaceQueues[faceId];
         link := c.FaceLinks[faceId];
 
-        fmt.Println("here...");
         for j := 0; j < len(queue.Fifo); j++ {
             msg := queue.Fifo[j];
             if (msg == nil) {
@@ -178,9 +189,11 @@ func (c Consumer) Tick(time int) {
             }
 
             // simulate processing delay
-            ticksLeft := link.txTime(len(msg.GetPayload()));
-            stagedMsg := StagedMessage{msg, ticksLeft};
-            fmt.Println("ok man");
+            queue.Fifo[j] = nil; // remove it.
+
+            // ticksLeft := link.txTime(len(msg.GetPayload()));
+
+            stagedMsg := StagedMessage{msg, 2};
             link.PushBack(stagedMsg);
         }
     }
