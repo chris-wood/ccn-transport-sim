@@ -59,13 +59,45 @@ func Manifest_CreateSimple(datas []Data) (Manifest) {
     return Manifest{};
 }
 
-type StagedMessage struct {
-    Msg Message `json:"msg"`
-    TicksLeft int `json:"ticksleft"`
+type StagedMessage interface {
+    GetMessage() Message;
+    Ticks() int;
 }
 
-func (sm StagedMessage) Ticks() (int) {
+type TransmittingMessage struct {
+    Msg Message `json:"msg"`
+    TicksLeft int `json:"ticksleft"`
+    Target int `json:"target"`
+}
+
+func (sm TransmittingMessage) Ticks() (int) {
     return sm.TicksLeft;
+}
+
+func (sm TransmittingMessage) GetMessage() (Message) {
+    return sm.Msg;
+}
+
+func (sm TransmittingMessage) GetTarget() (int) {
+    return sm.Target;
+}
+
+type QueuedMessage struct {
+    Msg Message `json:"msg"`
+    TicksLeft int `json:"ticksleft"`
+    TargetFace int `json:"targetface"`
+}
+
+func (qm QueuedMessage) Ticks() (int) {
+    return qm.TicksLeft;
+}
+
+func (qm QueuedMessage) GetMessage() (Message) {
+    return qm.Msg;
+}
+
+func (qm QueuedMessage) GetTarget() (int) {
+    return qm.TargetFace;
 }
 
 type fibentry struct {
@@ -147,6 +179,7 @@ type Forwarder struct {
     Faces []int
     FaceQueues map[int]queue
     FaceLinks map[int]link
+    ProcessingPackets chan QueuedMessage
 
     Fib *fibtable
     Cache *cache
@@ -173,9 +206,9 @@ func (c Consumer) Tick(time int) {
 
         for j := 0; j < len(link.Stage); j++ {
             msg := <- link.Stage;
-            if (msg.Msg != nil) {
+            if (msg.GetMessage() != nil) {
                 if (msg.Ticks() > 0) {
-                    link.Stage <- StagedMessage{msg.Msg, msg.Ticks() - 1};
+                    link.Stage <- TransmittingMessage{msg.GetMessage(), msg.Ticks() - 1, 0};
                 } else {
                     fmt.Println("OK")
                     // TODO: drop it in the recipient queue here...
@@ -184,11 +217,29 @@ func (c Consumer) Tick(time int) {
         }
     }
 
-    // Handle queue movement...
+    // Handle message processing (one per tick)
+    if len(c.ProcessingPackets) > 0 {
+        msg := <- c.ProcessingPackets;
+        if (msg.Ticks() > 0) {
+            newMsg := QueuedMessage{msg.GetMessage(), msg.Ticks() - 1, msg.GetTarget()};
+            c.ProcessingPackets <- newMsg;
+        } else {
+            // ticksLeft := link.txTime(len(msg.GetPayload()));
+            fmt.Println("okay mang");
+            ticksLeft := 2;
+            link := c.FaceLinks[msg.GetTarget()];
+            stagedMsg := TransmittingMessage{msg.GetMessage(), ticksLeft, 0};
+            err := link.PushBack(stagedMsg);
+            if err != nil {
+                fmt.Println("wtf!");
+            }
+        }
+    }
+
+    // Handle queue movement
     for i := 0; i < len(c.Faces); i++ { // length == 1
         faceId := c.Faces[i];
         queue := c.FaceQueues[faceId];
-        link := c.FaceLinks[faceId];
 
         for j := 0; j < len(queue.Fifo); j++ {
             msg := <- queue.Fifo;
@@ -196,15 +247,10 @@ func (c Consumer) Tick(time int) {
                 break;
             }
 
-            // TODO: simulate processing delay
-
-            // ticksLeft := link.txTime(len(msg.GetPayload()));
-
-            stagedMsg := StagedMessage{msg, 2};
-            err := link.PushBack(stagedMsg);
-            if err != nil {
-                fmt.Println("wtf!");
-            }
+            // Throw into the processing packet channel for processing delay
+            processingTime := 2;
+            queuedMessage := QueuedMessage{msg, processingTime, faceId};
+            c.ProcessingPackets <- queuedMessage
         }
     }
 }
@@ -235,12 +281,13 @@ func consumer_Create(id string) (*Consumer) {
     faceLinkMap := make(map[int]link);
     fifo := queue{make(chan Message, 100), 10};
     link := link{make(chan StagedMessage, 10), 10, 0.0, 1000}
+    processingPackets := make(chan QueuedMessage, 10)
 
     defaultFace := 1;
     faceMap[defaultFace] = fifo;
     faceLinkMap[defaultFace] = link;
 
-    fwd := &Forwarder{id, []int{defaultFace}, faceMap, faceLinkMap, &fibtable{}, &cache{}, &pittable{}};
+    fwd := &Forwarder{id, []int{defaultFace}, faceMap, faceLinkMap, processingPackets, &fibtable{}, &cache{}, &pittable{}};
     consumer := &Consumer{fwd};
     return consumer;
 }
