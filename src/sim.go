@@ -70,20 +70,20 @@ type fibentry struct {
 }
 
 type fibtable struct {
-    Table map[string]fibentry
+    Table map[string]fibentry `json:"table"`
 }
 
 type pitentry struct {
-    Name string
-    Records []Interest
+    Name string `json:"name"`
+    Records []Interest `json:"records"`
 }
 
 type pittable struct {
-    Table map[string]pitentry
+    Table map[string]pitentry `json:"table"`
 }
 
 type cache struct {
-    Cache map[string]Data
+    Cache map[string]Data `json:"cache"`
 }
 
 type link struct {
@@ -104,10 +104,10 @@ type queue struct {
 
 func (q queue) PushBackInterest(msg Interest) {
     q.Fifo.PushBack(msg);
-    fmt.Print("Inserting: ");
-
-    json, _ := json.Marshal(msg)
-    fmt.Println(string(json));
+    // fmt.Print("Inserting: ");
+    //
+    // json, _ := json.Marshal(msg)
+    // fmt.Println(string(json));
 }
 
 func (q queue) PushBackData(msg Data) {
