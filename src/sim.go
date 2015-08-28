@@ -91,7 +91,7 @@ type cache struct {
 }
 
 type link struct {
-    Stage []StagedMessage `json:"stage"`
+    Stage chan StagedMessage `json:"stage"`
     Capacity int `json:"capacity"`
     Pfail float32 `json:"pfail"`
     Rate float32 `json:"rate"`
@@ -110,28 +110,34 @@ func (lfe LinkFullError) Error() (string) {
     return lfe.desc;
 }
 
-func (l link) PushBack(msg StagedMessage) (link, error) {
-    var newLink link
+func (l link) PushBack(msg StagedMessage) (error) {
     if (len(l.Stage) < l.Capacity) {
-        newStage := append(l.Stage, msg);
-        return link{newStage, l.Capacity, l.Pfail, l.Rate}, nil;
+        l.Stage <- msg;
+        return nil;
     } else {
-        return newLink, LinkFullError{"Link full"};
+        return LinkFullError{"Link full"};
     }
 }
 
 type queue struct {
-    Fifo []Message `json:"fifo"`
-    Size int `json:"size"`
+    Fifo chan Message `json:"fifo"`
+    Capacity int `json:"size"`
 }
 
-func (q queue) PushBack(msg Message) {
-    if (q.Size < len(q.Fifo)) {
-        q.Fifo[q.Size] = msg;
-        q.Size = q.Size + 1;
+type QueueFullError struct {
+    desc string
+}
+
+func (qfe QueueFullError) Error() (string) {
+    return qfe.desc;
+}
+
+func (q queue) PushBack(msg Message) (error) {
+    if (len(q.Fifo) < q.Capacity) {
+        q.Fifo <- msg;
+        return nil;
     } else {
-        fmt.Println("FAILED TO INSERT");
-        // TODO: drop, error, something
+        return QueueFullError{"Queue full"};
     }
 }
 
@@ -166,11 +172,10 @@ func (c Consumer) Tick(time int) {
         link := c.FaceLinks[faceId];
 
         for j := 0; j < len(link.Stage); j++ {
-            msg := link.Stage[j];
+            msg := <- link.Stage;
             if (msg.Msg != nil) {
                 if (msg.Ticks() > 0) {
-                    newMsg := StagedMessage{msg.Msg, msg.Ticks() - 1};
-                    link.Stage[j] = newMsg;
+                    link.Stage <- StagedMessage{msg.Msg, msg.Ticks() - 1};
                 } else {
                     fmt.Println("OK")
                     // TODO: drop it in the recipient queue here...
@@ -186,21 +191,18 @@ func (c Consumer) Tick(time int) {
         link := c.FaceLinks[faceId];
 
         for j := 0; j < len(queue.Fifo); j++ {
-            msg := queue.Fifo[j];
+            msg := <- queue.Fifo;
             if (msg == nil) {
                 break;
             }
 
-            // simulate processing delay
-            queue.Fifo[j] = nil; // remove it.
+            // TODO: simulate processing delay
 
             // ticksLeft := link.txTime(len(msg.GetPayload()));
 
             stagedMsg := StagedMessage{msg, 2};
-            newLink, err := link.PushBack(stagedMsg);
-            if err == nil {
-                c.FaceLinks[faceId] = newLink;
-            } else {
+            err := link.PushBack(stagedMsg);
+            if err != nil {
                 fmt.Println("wtf!");
             }
         }
@@ -210,7 +212,10 @@ func (c Consumer) Tick(time int) {
 func (c Consumer) SendInterest(msg Interest) {
     defaultFace := c.Faces[0];
     queue := c.FaceQueues[defaultFace];
-    queue.PushBack(msg);
+    err := queue.PushBack(msg);
+    if (err != nil) {
+        fmt.Println("WTF!");
+    }
 }
 
 func (c Consumer) ReceiveInterest(msg Interest) {
@@ -228,8 +233,8 @@ func (c Consumer) ReceiveManifest(msg Manifest) {
 func consumer_Create(id string) (*Consumer) {
     faceMap := make(map[int]queue);
     faceLinkMap := make(map[int]link);
-    fifo := queue{make([]Message, 100), 0};
-    link := link{make([]StagedMessage, 100), 0, 0.0, 1000}
+    fifo := queue{make(chan Message, 100), 0};
+    link := link{make(chan StagedMessage, 10), 10, 0.0, 1000}
 
     defaultFace := 1;
     faceMap[defaultFace] = fifo;
