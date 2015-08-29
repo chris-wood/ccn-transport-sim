@@ -9,6 +9,9 @@ import "container/list"
 type Message interface {
     GetName() string
     GetPayload() []uint8
+    ProcessAtRouter(router Router)
+    ProcessAtConsumer(consumer Consumer)
+    ProcessAtProducer(producer Producer)
 }
 
 type Interest struct {
@@ -24,6 +27,18 @@ func (i Interest) GetName() (string) {
 
 func (i Interest) GetPayload() ([]uint8) {
     return i.Payload;
+}
+
+func (i Interest) ProcessAtRouter(router Router) {
+    fmt.Println("router processing interest");
+}
+
+func (i Interest) ProcessAtConsumer(consumer Consumer) {
+    fmt.Println("consumer processing interest");
+}
+
+func (i Interest) ProcessAtProducer(producer Producer) {
+    fmt.Println("producer processing interest");
 }
 
 func Interest_CreateSimple(name string) (Interest) {
@@ -44,6 +59,18 @@ func (d Data) GetPayload() ([]uint8) {
     return d.Payload;
 }
 
+func (d Data) ProcessAtRouter(router Router) {
+    fmt.Println("router processing data");
+}
+
+func (d Data) ProcessAtConsumer(consumer Consumer) {
+    fmt.Println("consumer processing data");
+}
+
+func (d Data) ProcessAtProducer(producer Producer) {
+    fmt.Println("producer processing data");
+}
+
 func Data_CreateSimple(name string) (Data) {
     Data := Data{Name: name, Payload: []uint8{0x00}};
     return Data;
@@ -52,6 +79,18 @@ func Data_CreateSimple(name string) (Data) {
 type Manifest struct {
     Name string `json:"name"`
     Contents []Data `json:"contents"`
+}
+
+func (m Manifest) ProcessAtRouter(router Router) {
+    fmt.Println("router processing manifest");
+}
+
+func (m Manifest) ProcessAtConsumer(consumer Consumer) {
+    fmt.Println("consumer processing manifest");
+}
+
+func (m Manifest) ProcessAtProducer(producer Producer) {
+    fmt.Println("producer processing manifest");
 }
 
 func Manifest_CreateSimple(datas []Data) (Manifest) {
@@ -230,7 +269,6 @@ func (f *Forwarder) Tick(time int, upward chan Message) {
             f.ProcessingPackets <- newMsg;
         } else {
             // ticksLeft := link.txTime(len(msg.GetPayload()));
-            fmt.Println("okay mang");
             ticksLeft := 2;
             link := f.FaceLinks[msg.GetTarget()];
             stagedMsg := TransmittingMessage{msg.GetMessage(), ticksLeft, 0};
@@ -252,8 +290,9 @@ func (f *Forwarder) Tick(time int, upward chan Message) {
                 break;
             }
 
-            // Throw to something that handles this packet
-            fmt.Println("msg received...");
+            go func() {
+                upward <- msg;
+            }();
         }
     }
 
@@ -277,12 +316,13 @@ func (f *Forwarder) Tick(time int, upward chan Message) {
 }
 
 func (c Consumer) Tick(time int) {
-    fmt.Printf("Tick = %d\n", time);
-
     channel := make(chan Message);
     c.Fwd.Tick(time, channel);
-
-    // TODO: process channel
+    if len(channel) > 0 {
+        for msg := range(channel) {
+            msg.ProcessAtConsumer(c);
+        }
+    }
 }
 
 func (c Consumer) SendInterest(msg Interest) {
@@ -332,10 +372,14 @@ type Producer struct {
 }
 
 func (p Producer) Tick(time int) {
-    // TODO: add channel of messages that forwarder will pass upstairs
     channel := make(chan Message);
     p.Fwd.Tick(time, channel);
-    // TODO: handle upstairs messages here...
+
+    if len(channel) > 0 {
+        for msg := range(channel) {
+            msg.ProcessAtProducer(p)
+        }
+    }
 }
 
 // TODO: how to make queue creation more flexible?
@@ -368,6 +412,12 @@ type Router struct {
 func (r Router) Tick(time int) {
     channel := make(chan Message);
     r.Fwd.Tick(time, channel);
+
+    if len(channel) > 0 {
+        for msg := range channel {
+            msg.ProcessAtRouter(r);
+        }
+    }
 }
 
 func router_Create(id string) (*Router) {
