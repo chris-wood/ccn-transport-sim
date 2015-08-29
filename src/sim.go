@@ -200,7 +200,7 @@ type Runnable interface {
     Tick(int)
 }
 
-func (f *Forwarder) Tick(time int) {
+func (f *Forwarder) Tick(time int, upward chan Message) {
     // Handle link delays initiated from this node
     for i := 0; i < len(f.Faces); i++ {
 
@@ -278,7 +278,11 @@ func (f *Forwarder) Tick(time int) {
 
 func (c Consumer) Tick(time int) {
     fmt.Printf("Tick = %d\n", time);
-    c.Fwd.Tick(time);
+
+    channel := make(chan Message);
+    c.Fwd.Tick(time, channel);
+
+    // TODO: process channel
 }
 
 func (c Consumer) SendInterest(msg Interest) {
@@ -329,7 +333,8 @@ type Producer struct {
 
 func (p Producer) Tick(time int) {
     // TODO: add channel of messages that forwarder will pass upstairs
-    p.Fwd.Tick(time);
+    channel := make(chan Message);
+    p.Fwd.Tick(time, channel);
     // TODO: handle upstairs messages here...
 }
 
@@ -361,7 +366,8 @@ type Router struct {
 }
 
 func (r Router) Tick(time int) {
-    r.Fwd.Tick(time);
+    channel := make(chan Message);
+    r.Fwd.Tick(time, channel);
 }
 
 func router_Create(id string) (*Router) {
