@@ -293,7 +293,7 @@ type Runnable interface {
     Tick(int)
 }
 
-func (f *Forwarder) Tick(time int, upward chan Message) {
+func (f *Forwarder) Tick(time int, upward chan Message, doneChannel chan int) {
     // Handle link delays initiated from this node
     for i := 0; i < len(f.Faces); i++ {
 
@@ -333,6 +333,7 @@ func (f *Forwarder) Tick(time int, upward chan Message) {
     }
 
     // Handle input queue movement
+    sent := false
     for i := 0; i < len(f.Faces); i++ {
         faceId := f.Faces[i];
         queue := f.InputFaceQueues[faceId];
@@ -342,13 +343,12 @@ func (f *Forwarder) Tick(time int, upward chan Message) {
             if (msg == nil) {
                 break;
             }
-
-            // go func() {
-            //     fmt.Println("putting msg upstairs!");
-            //     upward <- msg;
-            // }();
             upward <- msg;
+            sent = true;
         }
+    }
+    if sent {
+        upward <- nil; // signal completion
     }
 
     // Handle output queue movement
@@ -368,16 +368,28 @@ func (f *Forwarder) Tick(time int, upward chan Message) {
             f.ProcessingPackets <- queuedMessage
         }
     }
+
+    // signal completion.
+    doneChannel <- 1;
 }
 
 func (c Consumer) Tick(time int) {
-    channel := make(chan Message, 1000);
-    c.Fwd.Tick(time, channel);
-    if len(channel) > 0 {
-        for msg := range(channel) {
+    channel := make(chan Message);
+    doneChannel := make(chan int);
+
+    go c.Fwd.Tick(time, channel, doneChannel);
+    go func() {
+        for {
+            msg := <-channel;
+            if msg == nil {
+                break;
+            }
+            fmt.Println("processing at consumer...")
             msg.ProcessAtConsumer(c);
-        }
-    }
+        };
+    }();
+
+    <-doneChannel;
 }
 
 func (c Consumer) SendInterest(msg Interest) {
@@ -427,14 +439,18 @@ type Producer struct {
 }
 
 func (p Producer) Tick(time int) {
-    channel := make(chan Message, 1000);
-    p.Fwd.Tick(time, channel);
+    channel := make(chan Message);
+    doneChannel := make(chan int);
+
+    p.Fwd.Tick(time, channel, doneChannel);
 
     if len(channel) > 0 {
         for msg := range(channel) {
             msg.ProcessAtProducer(p)
         }
     }
+
+    <-doneChannel;
 }
 
 // TODO: how to make queue creation more flexible?
@@ -466,13 +482,21 @@ type Router struct {
 
 func (r Router) Tick(time int) {
     channel := make(chan Message, 1000);
-    r.Fwd.Tick(time, channel);
+    doneChannel := make(chan int);
 
-    if len(channel) > 0 {
-        for msg := range channel {
+    go r.Fwd.Tick(time, channel, doneChannel);
+    go func() {
+        for {
+            msg := <-channel;
+            if msg == nil {
+                break;
+            }
+            fmt.Println("processing...")
             msg.ProcessAtRouter(r);
-        }
-    }
+        };
+    }();
+
+    <-doneChannel;
 }
 
 func (r Router) SendInterest(msg Interest, face int) {
