@@ -150,6 +150,17 @@ type fibtable struct {
     Table map[string]fibentry `json:"table"`
 }
 
+func (f fibtable) AddPrefix(prefix string, face int) {
+    if val, ok := f.Table[prefix]; ok {
+        // TODO: face might already be in the interface list
+        entry := fibentry{prefix, append(val.Interfaces, face)};
+        f.Table[prefix] = entry;
+    } else {
+        entry := fibentry{prefix, []int{face}};
+        f.Table[prefix] = entry;
+    }
+}
+
 type pitentry struct {
     Name string `json:"name"`
     Records []Interest `json:"records"`
@@ -362,7 +373,7 @@ func consumer_Create(id string) (*Consumer) {
     faceLinkMap[defaultFace] = link;
 
     fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
-        faceLinkMapQueues, processingPackets, &fibtable{}, &cache{}, &pittable{}};
+        faceLinkMapQueues, processingPackets, &fibtable{Table: make(map[string]fibentry)}, &cache{}, &pittable{}};
     consumer := &Consumer{fwd};
     return consumer;
 }
@@ -400,7 +411,7 @@ func producer_Create(id string) (*Producer) {
     faceLinkMap[defaultFace] = link;
 
     fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
-        faceLinkMapQueues, processingPackets, &fibtable{}, &cache{}, &pittable{}};
+        faceLinkMapQueues, processingPackets, &fibtable{Table: make(map[string]fibentry)}, &cache{}, &pittable{}};
     producer := &Producer{fwd};
     return producer;
 }
@@ -436,7 +447,7 @@ func router_Create(id string) (*Router) {
     faceLinkMap[defaultFace] = link;
 
     fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
-        faceLinkMapQueues, processingPackets, &fibtable{}, &cache{}, &pittable{}};
+        faceLinkMapQueues, processingPackets, &fibtable{Table: make(map[string]fibentry)}, &cache{}, &pittable{}};
     router := &Router{fwd};
     return router;
 }
@@ -446,7 +457,7 @@ type Event struct {
     val int
 }
 
-func connect(fwd1 *Forwarder, face1 int, fwd2 *Forwarder, face2 int) {
+func connect(fwd1 *Forwarder, face1 int, fwd2 *Forwarder, face2 int, prefix string) {
     // face1 --> link1 --> face2 (input queue)
     fwd1.OutputFaceQueues[face1] = fwd1.OutputFaceQueues[1]
     if _, ok := fwd2.InputFaceQueues[face2]; !ok {
@@ -455,6 +466,8 @@ func connect(fwd1 *Forwarder, face1 int, fwd2 *Forwarder, face2 int) {
     }
     fwd1.FaceLinkQueues[face1] = fwd2.InputFaceQueues[face2];
     // fmt.Println(fwd1.FaceLinkQueues[face1]);
+
+    fwd1.Fib.AddPrefix(prefix, face1);
 
     // face2 --> link2 --> face1 (input queue)
     fwd2.OutputFaceQueues[face2] = fwd2.OutputFaceQueues[1]
@@ -486,7 +499,7 @@ func main() {
 
     // network elements
     consumer := consumer_Create("consumer1");
-    msg := Interest_CreateSimple("lci:/foo/bar");
+    msg := Interest_CreateSimple("/foo/bar");
     consumer.SendInterest(msg);
 
     producer := producer_Create("producer1");
@@ -498,8 +511,8 @@ func main() {
     nodes[2] = producer;
 
     // Make some connections
-    connect(consumer.Fwd, 1, router.Fwd, 1);
-    connect(router.Fwd, 1, producer.Fwd, 1);
+    connect(consumer.Fwd, 1, router.Fwd, 1, "/foo");
+    connect(router.Fwd, 1, producer.Fwd, 1, "/foo");
 
     for i := 1; i <= simulationTime; i++ {
         // fmt.Printf("Time = %d...\n", i);
