@@ -4,6 +4,7 @@ import "fmt"
 import "os"
 import "strconv"
 import "container/list"
+import "strings"
 // import "encoding/json"
 
 type Message interface {
@@ -30,6 +31,14 @@ func (i Interest) GetPayload() ([]uint8) {
 }
 
 func (i Interest) ProcessAtRouter(router Router) {
+    faces, err := router.Fwd.Fib.GetInterfacesForPrefix(i.GetName());
+    if err == nil {
+        fmt.Println("Forwarding interest");
+        router.SendInterest(i, faces[0]);
+    } else {
+        fmt.Println(err.Error());
+        // NOT IN FIB, drop.
+    }
     fmt.Println("router processing interest");
 }
 
@@ -161,6 +170,41 @@ func (f fibtable) AddPrefix(prefix string, face int) {
     }
 }
 
+type NotInFibError struct {
+    desc string
+}
+
+func (nif NotInFibError) Error() (string) {
+    return nif.desc;
+}
+
+func (f fibtable) GetInterfacesForPrefix(prefix string) ([]int, error){
+    var faces []int;
+
+    components := strings.Split(prefix, "/");
+    foundEntry := false;
+
+    // Check via LPM
+    for i := 0; i < len(components); i++ {
+        fullPrefix := "/"
+        for j := 0; j < i; j++ {
+            fullPrefix = fullPrefix + components[j];
+            fullPrefix = fullPrefix + "/";
+        }
+        fullPrefix = fullPrefix + components[i];
+
+        if val, ok := f.Table[fullPrefix]; ok {
+            faces = val.Interfaces;
+        }
+    }
+
+    if !foundEntry {
+        return faces, NotInFibError{fmt.Sprintf("%s not in FIB", prefix)};
+    } else {
+        return faces, nil;
+    }
+}
+
 type pitentry struct {
     Name string `json:"name"`
     Records []Interest `json:"records"`
@@ -218,7 +262,6 @@ func (qfe QueueFullError) Error() (string) {
 
 func (q queue) PushBack(msg Message) (error) {
     if (len(q.Fifo) < q.Capacity) {
-        fmt.Println("pushing message");
         q.Fifo <- msg;
         return nil;
     } else {
@@ -263,9 +306,8 @@ func (f *Forwarder) Tick(time int, upward chan Message) {
                 if (msg.Ticks() > 0) {
                     link.Stage <- TransmittingMessage{msg.GetMessage(), msg.Ticks() - 1, 0};
                 } else {
-                    fmt.Println("OK")
+                    fmt.Println("OK -- putting in recipient queue");
                     queue := f.FaceLinkQueues[faceId];
-                    fmt.Println(queue);
                     queue.PushBack(msg.GetMessage());
                 }
             }
@@ -301,9 +343,11 @@ func (f *Forwarder) Tick(time int, upward chan Message) {
                 break;
             }
 
-            go func() {
-                upward <- msg;
-            }();
+            // go func() {
+            //     fmt.Println("putting msg upstairs!");
+            //     upward <- msg;
+            // }();
+            upward <- msg;
         }
     }
 
@@ -327,7 +371,7 @@ func (f *Forwarder) Tick(time int, upward chan Message) {
 }
 
 func (c Consumer) Tick(time int) {
-    channel := make(chan Message);
+    channel := make(chan Message, 1000);
     c.Fwd.Tick(time, channel);
     if len(channel) > 0 {
         for msg := range(channel) {
@@ -383,7 +427,7 @@ type Producer struct {
 }
 
 func (p Producer) Tick(time int) {
-    channel := make(chan Message);
+    channel := make(chan Message, 1000);
     p.Fwd.Tick(time, channel);
 
     if len(channel) > 0 {
@@ -421,13 +465,21 @@ type Router struct {
 }
 
 func (r Router) Tick(time int) {
-    channel := make(chan Message);
+    channel := make(chan Message, 1000);
     r.Fwd.Tick(time, channel);
 
     if len(channel) > 0 {
         for msg := range channel {
             msg.ProcessAtRouter(r);
         }
+    }
+}
+
+func (r Router) SendInterest(msg Interest, face int) {
+    queue := r.Fwd.OutputFaceQueues[face];
+    err := queue.PushBack(msg);
+    if (err != nil) {
+        fmt.Println("WTF!");
     }
 }
 
