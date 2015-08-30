@@ -333,7 +333,7 @@ func (f *Forwarder) Tick(time int, upward chan Message, doneChannel chan int) {
     }
 
     // Handle input queue movement
-    sent := false
+    // sent := false
     for i := 0; i < len(f.Faces); i++ {
         faceId := f.Faces[i];
         queue := f.InputFaceQueues[faceId];
@@ -344,12 +344,12 @@ func (f *Forwarder) Tick(time int, upward chan Message, doneChannel chan int) {
                 break;
             }
             upward <- msg;
-            sent = true;
+            // sent = true;
         }
     }
-    if sent {
-        upward <- nil; // signal completion
-    }
+    // if sent {
+    upward <- nil; // signal completion
+    // }
 
     // Handle output queue movement
     for i := 0; i < len(f.Faces); i++ { // length == 1
