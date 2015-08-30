@@ -47,6 +47,7 @@ func (i Interest) ProcessAtConsumer(consumer Consumer) {
 }
 
 func (i Interest) ProcessAtProducer(producer Producer) {
+    data := Data_CreateSimple(i.GetName(), i.GetPayload());
     fmt.Println("producer processing interest");
 }
 
@@ -186,7 +187,7 @@ func (f fibtable) GetInterfacesForPrefix(prefix string) ([]int, error){
 
     // Check via LPM
     for i := 0; i < len(components); i++ {
-        fullPrefix := "/"
+        fullPrefix := ""
         for j := 0; j < i; j++ {
             fullPrefix = fullPrefix + components[j];
             fullPrefix = fullPrefix + "/";
@@ -195,6 +196,7 @@ func (f fibtable) GetInterfacesForPrefix(prefix string) ([]int, error){
 
         if val, ok := f.Table[fullPrefix]; ok {
             faces = val.Interfaces;
+            foundEntry = true;
         }
     }
 
@@ -376,8 +378,10 @@ func (f *Forwarder) Tick(time int, upward chan Message, doneChannel chan int) {
 func (c Consumer) Tick(time int) {
     channel := make(chan Message);
     doneChannel := make(chan int);
+    doneUpwardsProcessing := make(chan int);
 
     go c.Fwd.Tick(time, channel, doneChannel);
+
     go func() {
         for {
             msg := <-channel;
@@ -387,9 +391,12 @@ func (c Consumer) Tick(time int) {
             fmt.Println("processing at consumer...")
             msg.ProcessAtConsumer(c);
         };
+        doneUpwardsProcessing <- 1;
     }();
 
+    // block until completion
     <-doneChannel;
+    <-doneUpwardsProcessing;
 }
 
 func (c Consumer) SendInterest(msg Interest) {
@@ -441,16 +448,23 @@ type Producer struct {
 func (p Producer) Tick(time int) {
     channel := make(chan Message);
     doneChannel := make(chan int);
+    doneUpwardsProcessing := make(chan int);
 
-    p.Fwd.Tick(time, channel, doneChannel);
-
-    if len(channel) > 0 {
-        for msg := range(channel) {
-            msg.ProcessAtProducer(p)
-        }
-    }
+    go p.Fwd.Tick(time, channel, doneChannel);
+    go func() {
+        for {
+            msg := <-channel;
+            if msg == nil {
+                break;
+            }
+            fmt.Println("processing at producer...")
+            msg.ProcessAtProducer(p);
+        };
+        doneUpwardsProcessing <- 1;
+    }();
 
     <-doneChannel;
+    <-doneUpwardsProcessing;
 }
 
 // TODO: how to make queue creation more flexible?
@@ -481,8 +495,9 @@ type Router struct {
 }
 
 func (r Router) Tick(time int) {
-    channel := make(chan Message, 1000);
+    channel := make(chan Message);
     doneChannel := make(chan int);
+    doneUpwardsProcessing := make(chan int);
 
     go r.Fwd.Tick(time, channel, doneChannel);
     go func() {
@@ -494,9 +509,11 @@ func (r Router) Tick(time int) {
             fmt.Println("processing...")
             msg.ProcessAtRouter(r);
         };
+        doneUpwardsProcessing <- 1;
     }();
 
     <-doneChannel;
+    <-doneUpwardsProcessing;
 }
 
 func (r Router) SendInterest(msg Interest, face int) {
