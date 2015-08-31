@@ -83,7 +83,7 @@ func (d Data) GetPayload() ([]uint8) {
     return d.Payload;
 }
 
-func (d Data) ProcessAtRouter(router Router, face int) {
+func (d Data) ProcessAtRouter(router Router, arrivalFace int) {
     fmt.Println("router processing data");
     name := d.GetName();
     if router.Fwd.Pit.IsPending(name) {
@@ -94,6 +94,7 @@ func (d Data) ProcessAtRouter(router Router, face int) {
         for i := 0; i < len(entries); i++ {
             entry := entries[i];
             fmt.Println(entry);
+            router.SendData(d, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
         }
     } else {
         fmt.Println("not pending!!");
@@ -244,9 +245,14 @@ func (f fibtable) GetInterfacesForPrefix(prefix string) ([]int, error){
     }
 }
 
+type pitentryrecord struct {
+    arrivalFace int
+    msg Interest
+}
+
 type pitentry struct {
     Name string `json:"name"`
-    Records []Interest `json:"records"`
+    Records []pitentryrecord `json:"records"`
 }
 
 type pittable struct {
@@ -259,12 +265,13 @@ func (p pittable) RemoveEntry(name string) {
     delete(p.Table, name);
 }
 
-func (p pittable) GetEntries(name string) ([]Interest) {
+func (p pittable) GetEntries(name string) ([][pitentryrecord]) {
     val, _ := p.Table[name];
     // assert(ok); // hmm...
     return val.Records;
 }
 
+// TODO: left off here -- fixing the pitentry contents
 func (p pittable) AddEntry(msg Interest) {
     name := msg.GetName();
     if val, ok := p.Table[name]; ok {
@@ -703,6 +710,7 @@ func main() {
     for i := 1; i <= simulationTime; i++ {
         // fmt.Printf("Time = %d...\n", i);
 
+        // event processing pipeline
         for e := events.Front(); e != nil; e = e.Next() {
             events.Remove(e);
             event := e.Value.(*Event);
