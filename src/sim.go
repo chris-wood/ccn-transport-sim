@@ -232,6 +232,27 @@ type pittable struct {
     Table map[string]pitentry `json:"table"`
 }
 
+func (p pittable) RemoveEntry(name string) {
+    fmt.Println(name);
+    
+}
+
+func (p pittable) AddEntry(msg Interest) {
+    name := msg.GetName();
+    if val, ok := p.Table[name]; ok {
+        entry := pitentry{msg.GetName(), append(val.Records, msg)};
+        p.Table[name] = entry;
+    } else {
+        entry := pitentry{msg.GetName(), []Interest{msg}};
+        p.Table[name] = entry;
+    }
+}
+
+func (p pittable) IsPending(name string) (bool) {
+    _, ok := p.Table[name];
+    return ok;
+}
+
 type cache struct {
     Cache map[string]Data `json:"cache"`
 }
