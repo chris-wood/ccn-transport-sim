@@ -91,9 +91,12 @@ func (d Data) ProcessAtRouter(router Router, face int) {
         router.Fwd.Pit.RemoveEntry(name);
 
         // forward to all entries...
-        for entry := range(entries) {
+        for i := 0; i < len(entries); i++ {
+            entry := entries[i];
             fmt.Println(entry);
         }
+    } else {
+        fmt.Println("not pending!!");
     }
 }
 
@@ -505,7 +508,8 @@ func consumer_Create(id string) (*Consumer) {
 
     fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
-        &fibtable{Table: make(map[string]fibentry)}, &cache{}, &pittable{}};
+        &fibtable{Table: make(map[string]fibentry)}, &cache{},
+        &pittable{Table: make(map[string]pitentry)}};
     consumer := &Consumer{fwd};
     return consumer;
 }
@@ -564,7 +568,8 @@ func producer_Create(id string) (*Producer) {
 
     fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
-        &fibtable{Table: make(map[string]fibentry)}, &cache{}, &pittable{}};
+        &fibtable{Table: make(map[string]fibentry)}, &cache{},
+        &pittable{Table: make(map[string]pitentry)}};
     producer := &Producer{fwd};
     return producer;
 }
@@ -624,7 +629,8 @@ func router_Create(id string) (*Router) {
 
     fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
-        &fibtable{Table: make(map[string]fibentry)}, &cache{}, &pittable{}};
+        &fibtable{Table: make(map[string]fibentry)}, &cache{},
+        &pittable{make(map[string]pitentry)}};
     router := &Router{fwd};
     return router;
 }
