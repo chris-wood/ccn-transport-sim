@@ -34,14 +34,22 @@ func (i Interest) ProcessAtRouter(router Router, arrivalFace int) {
     fmt.Println("router processing interest");
 
     // TODO: PIT lookup and insertion (for backwards traversal)
-
-    faces, err := router.Fwd.Fib.GetInterfacesForPrefix(i.GetName());
-    if err == nil {
-        targetFace := faces[0];
-        router.SendInterest(i, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
+    name := i.GetName();
+    if router.Fwd.Pit.IsPending(name) {
+        router.Fwd.Pit.AddEntry(i);
     } else {
-        fmt.Println(err.Error());
-        // NOT IN FIB, drop.
+        // Insert into the PIT
+        router.Fwd.Pit.AddEntry(i);
+
+        // Forward along
+        faces, err := router.Fwd.Fib.GetInterfacesForPrefix(i.GetName());
+        if err == nil {
+            targetFace := faces[0];
+            router.SendInterest(i, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
+        } else {
+            fmt.Println(err.Error());
+            // NOT IN FIB, drop.
+        }
     }
 }
 
@@ -77,6 +85,16 @@ func (d Data) GetPayload() ([]uint8) {
 
 func (d Data) ProcessAtRouter(router Router, face int) {
     fmt.Println("router processing data");
+    name := d.GetName();
+    if router.Fwd.Pit.IsPending(name) {
+        entries := router.Fwd.Pit.GetEntries(name);
+        router.Fwd.Pit.RemoveEntry(name);
+
+        // forward to all entries...
+        for entry := range(entries) {
+            fmt.Println(entry);
+        }
+    }
 }
 
 func (d Data) ProcessAtConsumer(consumer Consumer, face int) {
@@ -233,8 +251,15 @@ type pittable struct {
 }
 
 func (p pittable) RemoveEntry(name string) {
-    fmt.Println(name);
-    
+    // _, ok := p.Table[name];
+    // assert(ok); // hmm...
+    delete(p.Table, name);
+}
+
+func (p pittable) GetEntries(name string) ([]Interest) {
+    val, _ := p.Table[name];
+    // assert(ok); // hmm...
+    return val.Records;
 }
 
 func (p pittable) AddEntry(msg Interest) {
@@ -400,9 +425,7 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
             // sent = true;
         }
     }
-    // if sent {
     upward <- nil; // signal completion
-    // }
 
     // Handle output queue movement
     for i := 0; i < len(f.Faces); i++ { // length == 1
