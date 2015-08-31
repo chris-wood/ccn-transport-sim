@@ -482,24 +482,21 @@ func (p Producer) Tick(time int) {
             if msg == nil {
                 break;
             }
-            fmt.Println("processing at producer...")
-            // msg.ProcessAtProducer(p);
-            realMsg := msg.GetMessage();
-            realMsg.ProcessAtProducer(p, msg.GetArrivalFace());
+            networkMessage := msg.GetMessage();
+            networkMessage.ProcessAtProducer(p, msg.GetArrivalFace());
         };
         doneUpwardsProcessing <- 1;
     }();
 
-    <-doneChannel;
-    <-doneUpwardsProcessing;
+    <-doneChannel; // wait until the forwarder is done working
+    <-doneUpwardsProcessing; // wait until we're done processing the upper-layer messages
 }
 
-func (p Producer) SendData(msg Data, face int) {
-    queue := p.Fwd.OutputFaceQueues[face];
+func (p Producer) SendData(msg Data, targetFace int) {
+    queue := p.Fwd.OutputFaceQueues[targetFace];
     err := queue.PushBack(msg);
     if (err != nil) {
         fmt.Println(err.Error());
-        fmt.Println("WTF!");
     }
 }
 
