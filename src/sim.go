@@ -51,7 +51,7 @@ func (i Interest) ProcessAtRouter(router Router, arrivalFace int) {
 }
 
 func (i Interest) ProcessAtConsumer(consumer Consumer, arrivalFace int) {
-    // fmt.Println("consumer processing interest");
+    fmt.Println("****consumer processing INTEREST");
 }
 
 func (i Interest) ProcessAtProducer(producer Producer, arrivalFace int) {
@@ -456,7 +456,6 @@ func (c Consumer) SendInterest(msg Interest) {
     defaultFace := c.Fwd.Faces[0];
     queue := c.Fwd.OutputFaceQueues[defaultFace];
 
-    // stagedMsg := QueuedMessage{msg, 0, 0, -1};
     arrivalFace := defaultFace;
     targetFace := defaultFace;
     fmt.Printf("Sending interest to face %d\n", targetFace);
