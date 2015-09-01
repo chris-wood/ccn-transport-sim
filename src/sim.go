@@ -31,9 +31,6 @@ func (i Interest) GetPayload() ([]uint8) {
 }
 
 func (i Interest) ProcessAtRouter(router Router, arrivalFace int) {
-    // fmt.Println("router processing interest");
-
-    // TODO: PIT lookup and insertion (for backwards traversal)
     name := i.GetName();
     if router.Fwd.Pit.IsPending(name) {
         router.Fwd.Pit.AddEntry(i, arrivalFace);
