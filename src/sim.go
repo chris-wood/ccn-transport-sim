@@ -31,20 +31,21 @@ func (i Interest) GetPayload() ([]uint8) {
 }
 
 func (i Interest) ProcessAtRouter(router Router, arrivalFace int) {
-    fmt.Println("router processing interest");
+    // fmt.Println("router processing interest");
 
     // TODO: PIT lookup and insertion (for backwards traversal)
     name := i.GetName();
     if router.Fwd.Pit.IsPending(name) {
-        router.Fwd.Pit.AddEntry(i);
+        router.Fwd.Pit.AddEntry(i, arrivalFace);
     } else {
         // Insert into the PIT
-        router.Fwd.Pit.AddEntry(i);
+        router.Fwd.Pit.AddEntry(i, arrivalFace);
 
         // Forward along
         faces, err := router.Fwd.Fib.GetInterfacesForPrefix(i.GetName());
         if err == nil {
             targetFace := faces[0];
+            // fmt.Printf("forwarding from %d to %d\n", arrivalFace, targetFace);
             router.SendInterest(i, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
         } else {
             fmt.Println(err.Error());
@@ -54,14 +55,12 @@ func (i Interest) ProcessAtRouter(router Router, arrivalFace int) {
 }
 
 func (i Interest) ProcessAtConsumer(consumer Consumer, arrivalFace int) {
-    fmt.Println("consumer processing interest");
+    // fmt.Println("consumer processing interest");
 }
 
 func (i Interest) ProcessAtProducer(producer Producer, arrivalFace int) {
-    fmt.Println("producer processing interest");
-    fmt.Println(arrivalFace);
+    // fmt.Printf("producer processing interest from face %d\n", arrivalFace);
     data := Data_CreateSimple(i.GetName(), i.GetPayload());
-
     producer.SendData(data, arrivalFace);
 }
 
@@ -84,7 +83,7 @@ func (d Data) GetPayload() ([]uint8) {
 }
 
 func (d Data) ProcessAtRouter(router Router, arrivalFace int) {
-    fmt.Println("router processing data");
+    // fmt.Println("router processing data");
     name := d.GetName();
     if router.Fwd.Pit.IsPending(name) {
         entries := router.Fwd.Pit.GetEntries(name);
@@ -93,7 +92,7 @@ func (d Data) ProcessAtRouter(router Router, arrivalFace int) {
         // forward to all entries...
         for i := 0; i < len(entries); i++ {
             entry := entries[i];
-            fmt.Println(entry);
+            targetFace := entry.arrivalFace;
             router.SendData(d, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
         }
     } else {
@@ -132,7 +131,6 @@ func (m Manifest) ProcessAtProducer(producer Producer, face int) {
 }
 
 func Manifest_CreateSimple(datas []Data) (Manifest) {
-    // TODO: make this a real Manifest...
     return Manifest{};
 }
 
@@ -140,29 +138,7 @@ type StagedMessage interface {
     GetMessage() Message;
     Ticks() int;
     GetArrivalFace() int;
-}
-
-type TransmittingMessage struct {
-    Msg Message `json:"msg"`
-    TicksLeft int `json:"ticksleft"`
-    Target int `json:"target"`
-    // TargetName string `json:"targetName"`
-}
-
-func (tm TransmittingMessage) GetArrivalFace() (int) {
-    return tm.Target;
-}
-
-func (sm TransmittingMessage) Ticks() (int) {
-    return sm.TicksLeft;
-}
-
-func (sm TransmittingMessage) GetMessage() (Message) {
-    return sm.Msg;
-}
-
-func (sm TransmittingMessage) GetTarget() (int) {
-    return sm.Target;
+    GetTargetFace() int;
 }
 
 type QueuedMessage struct {
@@ -170,11 +146,14 @@ type QueuedMessage struct {
     TicksLeft int `json:"ticksleft"`
     TargetFace int `json:"targetface"`
     ArrivalFace int `json:"arrivalface"`
-    // TargetName string `json:"targetName"`
 }
 
 func (qm QueuedMessage) GetArrivalFace() (int) {
     return qm.ArrivalFace;
+}
+
+func (qm QueuedMessage) GetTargetFace() (int) {
+    return qm.TargetFace;
 }
 
 func (qm QueuedMessage) Ticks() (int) {
@@ -185,26 +164,22 @@ func (qm QueuedMessage) GetMessage() (Message) {
     return qm.Msg;
 }
 
-func (qm QueuedMessage) GetTarget() (int) {
-    return qm.TargetFace;
-}
-
-type fibentry struct {
+type FibTableEntry struct {
     Prefix string `json:"prefix"`
     Interfaces []int `json:"interface"`
 }
 
-type fibtable struct {
-    Table map[string]fibentry `json:"table"`
+type FibTable struct {
+    Table map[string]FibTableEntry `json:"table"`
 }
 
-func (f fibtable) AddPrefix(prefix string, face int) {
+func (f FibTable) AddPrefix(prefix string, face int) {
     if val, ok := f.Table[prefix]; ok {
         // TODO: face might already be in the interface list
-        entry := fibentry{prefix, append(val.Interfaces, face)};
+        entry := FibTableEntry{prefix, append(val.Interfaces, face)};
         f.Table[prefix] = entry;
     } else {
-        entry := fibentry{prefix, []int{face}};
+        entry := FibTableEntry{prefix, []int{face}};
         f.Table[prefix] = entry;
     }
 }
@@ -217,7 +192,7 @@ func (nif NotInFibError) Error() (string) {
     return nif.desc;
 }
 
-func (f fibtable) GetInterfacesForPrefix(prefix string) ([]int, error){
+func (f FibTable) GetInterfacesForPrefix(prefix string) ([]int, error){
     var faces []int;
 
     components := strings.Split(prefix, "/");
@@ -245,45 +220,48 @@ func (f fibtable) GetInterfacesForPrefix(prefix string) ([]int, error){
     }
 }
 
-type pitentryrecord struct {
+type PitEntryRecord struct {
     arrivalFace int
     msg Interest
 }
 
-type pitentry struct {
+type PitEntry struct {
     Name string `json:"name"`
-    Records []pitentryrecord `json:"records"`
+    Records []PitEntryRecord `json:"records"`
 }
 
-type pittable struct {
-    Table map[string]pitentry `json:"table"`
+type PitTable struct {
+    Table map[string]PitEntry `json:"table"`
 }
 
-func (p pittable) RemoveEntry(name string) {
+func (p PitTable) RemoveEntry(name string) {
     // _, ok := p.Table[name];
     // assert(ok); // hmm...
     delete(p.Table, name);
 }
 
-func (p pittable) GetEntries(name string) ([][pitentryrecord]) {
+func (p PitTable) GetEntries(name string) ([]PitEntryRecord) {
     val, _ := p.Table[name];
     // assert(ok); // hmm...
     return val.Records;
 }
 
-// TODO: left off here -- fixing the pitentry contents
-func (p pittable) AddEntry(msg Interest) {
+// TODO: left off here -- fixing the PitEntry contents
+func (p PitTable) AddEntry(msg Interest, arrivalFace int) {
     name := msg.GetName();
     if val, ok := p.Table[name]; ok {
-        entry := pitentry{msg.GetName(), append(val.Records, msg)};
+        record := PitEntryRecord{arrivalFace, msg};
+        entry := PitEntry{msg.GetName(), append(val.Records, record)};
         p.Table[name] = entry;
     } else {
-        entry := pitentry{msg.GetName(), []Interest{msg}};
+        records := make([]PitEntryRecord, 1);
+        records[0] = PitEntryRecord{arrivalFace, msg};
+        entry := PitEntry{msg.GetName(), records};
         p.Table[name] = entry;
     }
 }
 
-func (p pittable) IsPending(name string) (bool) {
+func (p PitTable) IsPending(name string) (bool) {
     _, ok := p.Table[name];
     return ok;
 }
@@ -339,20 +317,17 @@ func (q queue) PushBackQueuedMessage(msg StagedMessage) (error) {
         q.Fifo <- msg;
         return nil;
     } else {
-        fmt.Println("error...")
         return QueueFullError{"Queue full"};
     }
 }
 
 
-func (q queue) PushBack(msg Message) (error) {
+func (q queue) PushBack(msg Message, arrivalFace int, targetFace int) (error) {
     if (len(q.Fifo) < q.Capacity) {
-        stagedMessage := QueuedMessage{msg, 0, 0, 0};
+        stagedMessage := QueuedMessage{msg, 0, targetFace, arrivalFace};
         q.PushBackQueuedMessage(stagedMessage);
-        // q.Fifo <- msg;
         return nil;
     } else {
-        fmt.Println("error...")
         return QueueFullError{"Queue full"};
     }
 }
@@ -368,9 +343,9 @@ type Forwarder struct {
     FaceToFace map[int]int
     ProcessingPackets chan QueuedMessage
 
-    Fib *fibtable
+    Fib *FibTable
     Cache *cache
-    Pit *pittable
+    Pit *PitTable
 }
 
 type Consumer struct {
@@ -392,10 +367,9 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
             msg := <- link.Stage;
             if (msg.GetMessage() != nil) {
                 if (msg.Ticks() > 0) {
-                    link.Stage <- TransmittingMessage{msg.GetMessage(), msg.Ticks() - 1, f.FaceToFace[faceId]};
+                    link.Stage <- QueuedMessage{msg.GetMessage(), msg.Ticks() - 1, msg.GetTargetFace(), msg.GetArrivalFace()};
                 } else {
-                    fmt.Println("OK -- putting in recipient queue");
-                    queue := f.FaceLinkQueues[faceId];
+                    queue := f.FaceLinkQueues[msg.GetArrivalFace()];
                     queue.PushBackQueuedMessage(msg);
                 }
             }
@@ -406,22 +380,21 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
     if len(f.ProcessingPackets) > 0 {
         msg := <- f.ProcessingPackets;
         if (msg.Ticks() > 0) {
-            newMsg := QueuedMessage{msg.GetMessage(), msg.Ticks() - 1, msg.GetTarget(), msg.GetArrivalFace()};
+            newMsg := QueuedMessage{msg.GetMessage(), msg.Ticks() - 1, msg.GetTargetFace(), msg.GetArrivalFace()};
             f.ProcessingPackets <- newMsg;
         } else {
             // ticksLeft := link.txTime(len(msg.GetPayload()));
             ticksLeft := 2;
-            link := f.FaceLinks[msg.GetTarget()];
-            stagedMsg := TransmittingMessage{msg.GetMessage(), ticksLeft, 0};
+            link := f.FaceLinks[msg.GetTargetFace()];
+            stagedMsg := QueuedMessage{msg.GetMessage(), ticksLeft, f.FaceToFace[msg.GetTargetFace()], msg.GetTargetFace()};
             err := link.PushBack(stagedMsg);
             if err != nil {
-                fmt.Println("wtf!");
+                fmt.Println(err.Error());
             }
         }
     }
 
     // Handle input queue movement
-    // sent := false
     for i := 0; i < len(f.Faces); i++ {
         faceId := f.Faces[i];
         queue := f.InputFaceQueues[faceId];
@@ -432,7 +405,6 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
                 break;
             }
             upward <- msg;
-            // sent = true;
         }
     }
     upward <- nil; // signal completion
@@ -450,7 +422,7 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
 
             // Throw into the processing packet channel for processing delay
             processingTime := 2;
-            queuedMessage := QueuedMessage{msg.GetMessage(), processingTime, faceId, msg.GetArrivalFace()};
+            queuedMessage := QueuedMessage{msg.GetMessage(), processingTime, msg.GetTargetFace(), msg.GetArrivalFace()};
             f.ProcessingPackets <- queuedMessage
         }
     }
@@ -472,9 +444,8 @@ func (c Consumer) Tick(time int) {
             if msg == nil {
                 break;
             }
-            fmt.Println("processing at consumer...")
             realMsg := msg.GetMessage();
-            realMsg.ProcessAtConsumer(c, msg.GetArrivalFace());
+            realMsg.ProcessAtConsumer(c, msg.GetArrivalFace()); // the arrival face is the arrival face
         };
         doneUpwardsProcessing <- 1;
     }();
@@ -490,10 +461,11 @@ func (c Consumer) SendInterest(msg Interest) {
     queue := c.Fwd.OutputFaceQueues[defaultFace];
 
     // stagedMsg := QueuedMessage{msg, 0, 0, -1};
-    err := queue.PushBack(msg);
-    // err := queue.PushBack(stagedMsg);
+    arrivalFace := defaultFace;
+    targetFace := defaultFace;
+    err := queue.PushBack(msg, arrivalFace, targetFace);
     if (err != nil) {
-        fmt.Println("WTF!");
+        fmt.Println(err.Error());
     }
 }
 
@@ -513,10 +485,10 @@ func consumer_Create(id string) (*Consumer) {
     inputFaceMap[defaultFace] = ififo;
     faceLinkMap[defaultFace] = link;
 
-    fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
+    fwd := &Forwarder{id, []int{defaultFace}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
-        &fibtable{Table: make(map[string]fibentry)}, &cache{},
-        &pittable{Table: make(map[string]pitentry)}};
+        &FibTable{Table: make(map[string]FibTableEntry)}, &cache{},
+        &PitTable{Table: make(map[string]PitEntry)}};
     consumer := &Consumer{fwd};
     return consumer;
 }
@@ -538,7 +510,7 @@ func (p Producer) Tick(time int) {
                 break;
             }
             networkMessage := msg.GetMessage();
-            networkMessage.ProcessAtProducer(p, msg.GetArrivalFace());
+            networkMessage.ProcessAtProducer(p, msg.GetTargetFace()); // the arrival face is the same as the target face
         };
         doneUpwardsProcessing <- 1;
     }();
@@ -549,7 +521,7 @@ func (p Producer) Tick(time int) {
 
 func (p Producer) SendData(msg Data, targetFace int) {
     queue := p.Fwd.OutputFaceQueues[targetFace];
-    err := queue.PushBack(msg);
+    err := queue.PushBack(msg, 1, targetFace);
     if (err != nil) {
         fmt.Println(err.Error());
     }
@@ -573,10 +545,10 @@ func producer_Create(id string) (*Producer) {
     inputFaceMap[defaultFace] = ififo;
     faceLinkMap[defaultFace] = link;
 
-    fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
+    fwd := &Forwarder{id, []int{defaultFace}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
-        &fibtable{Table: make(map[string]fibentry)}, &cache{},
-        &pittable{Table: make(map[string]pitentry)}};
+        &FibTable{Table: make(map[string]FibTableEntry)}, &cache{},
+        &PitTable{Table: make(map[string]PitEntry)}};
     producer := &Producer{fwd};
     return producer;
 }
@@ -597,10 +569,8 @@ func (r Router) Tick(time int) {
             if msg == nil {
                 break;
             }
-            fmt.Println("processing...")
-            // msg.ProcessAtRouter(r);
             realMsg := msg.GetMessage();
-            realMsg.ProcessAtRouter(r, msg.GetArrivalFace());
+            realMsg.ProcessAtRouter(r, msg.GetArrivalFace()); // the arrival face is... the arrival face
         };
         doneUpwardsProcessing <- 1;
     }();
@@ -610,11 +580,18 @@ func (r Router) Tick(time int) {
 }
 
 func (r Router) SendInterest(msg Interest, arrivalFace int, targetFace int) {
-    fmt.Println("Router sending interest");
     queue := r.Fwd.OutputFaceQueues[targetFace];
-    err := queue.PushBackQueuedMessage(QueuedMessage{msg, 0, arrivalFace, targetFace});
+    err := queue.PushBackQueuedMessage(QueuedMessage{msg, 0, targetFace, arrivalFace});
     if (err != nil) {
-        fmt.Println("WTF!");
+        fmt.Println(err.Error());
+    }
+}
+
+func (r Router) SendData(msg Data, arrivalFace int, targetFace int) {
+    queue := r.Fwd.OutputFaceQueues[targetFace];
+    err := queue.PushBackQueuedMessage(QueuedMessage{msg, 0, targetFace, arrivalFace});
+    if (err != nil) {
+        fmt.Println(err.Error());
     }
 }
 
@@ -636,8 +613,8 @@ func router_Create(id string) (*Router) {
 
     fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
-        &fibtable{Table: make(map[string]fibentry)}, &cache{},
-        &pittable{make(map[string]pitentry)}};
+        &FibTable{Table: make(map[string]FibTableEntry)}, &cache{},
+        &PitTable{make(map[string]PitEntry)}};
     router := &Router{fwd};
     return router;
 }
@@ -649,16 +626,24 @@ type Event struct {
 
 func connect(fwd1 *Forwarder, face1 int, fwd2 *Forwarder, face2 int, prefix string) {
     // face1 --> link1 --> face2 (input queue)
-    fwd1.OutputFaceQueues[face1] = fwd1.OutputFaceQueues[1]
+    fwd1.OutputFaceQueues[face1] = fwd1.OutputFaceQueues[1] // all queues dump to the default output queue
     if _, ok := fwd2.InputFaceQueues[face2]; !ok {
         fwd2.InputFaceQueues[face2] = queue{make(chan StagedMessage, 100), 10};
+    }
+    if _, ok := fwd1.FaceLinks[face1]; !ok {
+        link := link{make(chan StagedMessage, 10), 10, 0.0, 1000}
+        fwd1.FaceLinks[face1] = link;
     }
     fwd1.FaceLinkQueues[face1] = fwd2.InputFaceQueues[face2];
 
     // face2 --> link2 --> face1 (input queue)
-    fwd2.OutputFaceQueues[face2] = fwd2.OutputFaceQueues[1]
+    fwd2.OutputFaceQueues[face2] = fwd2.OutputFaceQueues[1] // all queues dump to the default output queue
     if _, ok := fwd1.InputFaceQueues[face1]; !ok {
         fwd1.InputFaceQueues[face1] = queue{make(chan StagedMessage, 100), 10};
+    }
+    if _, ok := fwd2.FaceLinks[face1]; !ok {
+        link := link{make(chan StagedMessage, 10), 10, 0.0, 1000}
+        fwd2.FaceLinks[face2] = link;
     }
     fwd2.FaceLinkQueues[face2] = fwd1.InputFaceQueues[face1];
 
@@ -705,7 +690,7 @@ func main() {
 
     // Make some connections
     connect(consumer.Fwd, 1, router.Fwd, 1, "/foo");
-    connect(router.Fwd, 1, producer.Fwd, 1, "/foo");
+    connect(router.Fwd, 2, producer.Fwd, 1, "/foo");
 
     for i := 1; i <= simulationTime; i++ {
         // fmt.Printf("Time = %d...\n", i);
