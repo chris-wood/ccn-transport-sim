@@ -671,15 +671,12 @@ func main() {
 
     // test events
     eventA := new(Event);
-    eventA.desc = "test";
-    eventA.val = 5;
+    eventA.desc = "Send interest command";
+    eventA.val = 5; // every 5 ticks
     events.PushBack(eventA);
 
     // network elements
     consumer := consumer_Create("consumer1");
-    msg := Interest_CreateSimple("/foo/bar");
-    consumer.SendInterest(msg);
-
     producer := producer_Create("producer1");
     router := router_Create("router1");
 
@@ -693,20 +690,19 @@ func main() {
     connect(router.Fwd, 2, producer.Fwd, 1, "/foo");
 
     for i := 1; i <= simulationTime; i++ {
-        // fmt.Printf("Time = %d...\n", i);
 
         // event processing pipeline
         for e := events.Front(); e != nil; e = e.Next() {
             events.Remove(e);
             event := e.Value.(*Event);
-
-            fmt.Printf("Time %d Event = %d\n", i, event.val);
-
             if event.val > 0 {
                 eventB := new(Event)
                 eventB.desc = event.desc
                 eventB.val = event.val - 1
                 deferredEvents.PushBack(eventB);
+            } else {
+                msg := Interest_CreateSimple("/foo/bar");
+                consumer.SendInterest(msg);
             }
         }
 
