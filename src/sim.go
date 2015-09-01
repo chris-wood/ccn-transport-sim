@@ -45,7 +45,6 @@ func (i Interest) ProcessAtRouter(router Router, arrivalFace int) {
         faces, err := router.Fwd.Fib.GetInterfacesForPrefix(i.GetName());
         if err == nil {
             targetFace := faces[0];
-            // fmt.Printf("forwarding from %d to %d\n", arrivalFace, targetFace);
             router.SendInterest(i, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
         } else {
             fmt.Println(err.Error());
@@ -445,6 +444,7 @@ func (c Consumer) Tick(time int) {
                 break;
             }
             realMsg := msg.GetMessage();
+            fmt.Printf("Processing message at %d\n", time);
             realMsg.ProcessAtConsumer(c, msg.GetArrivalFace()); // the arrival face is the arrival face
         };
         doneUpwardsProcessing <- 1;
@@ -456,13 +456,13 @@ func (c Consumer) Tick(time int) {
 }
 
 func (c Consumer) SendInterest(msg Interest) {
-
     defaultFace := c.Fwd.Faces[0];
     queue := c.Fwd.OutputFaceQueues[defaultFace];
 
     // stagedMsg := QueuedMessage{msg, 0, 0, -1};
     arrivalFace := defaultFace;
     targetFace := defaultFace;
+    fmt.Printf("Sending interest to face %d\n", targetFace);
     err := queue.PushBack(msg, arrivalFace, targetFace);
     if (err != nil) {
         fmt.Println(err.Error());
@@ -670,9 +670,9 @@ func main() {
     deferredEvents := list.New()
 
     // test events
-    eventA := new(Event);
-    eventA.desc = "Send interest command";
-    eventA.val = 5; // every 5 ticks
+    desc := "Send interest command";
+    timeout := 5; // every 5 ticks
+    eventA := Event{desc, timeout}
     events.PushBack(eventA);
 
     // network elements
@@ -694,15 +694,18 @@ func main() {
         // event processing pipeline
         for e := events.Front(); e != nil; e = e.Next() {
             events.Remove(e);
-            event := e.Value.(*Event);
+            event := e.Value.(Event);
             if event.val > 0 {
-                eventB := new(Event)
-                eventB.desc = event.desc
-                eventB.val = event.val - 1
+                eventB := Event{event.desc, event.val - 1}
                 deferredEvents.PushBack(eventB);
             } else {
+                // 1. send an interest
                 msg := Interest_CreateSimple("/foo/bar");
                 consumer.SendInterest(msg);
+
+                // 2. create timeout to send another one
+                eventB := Event{desc, timeout}
+                events.PushBack(eventB)
             }
         }
 
