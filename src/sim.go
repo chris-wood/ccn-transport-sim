@@ -5,6 +5,7 @@ import "os"
 import "strconv"
 import "container/list"
 import "strings"
+import "math/rand"
 // import "encoding/json"
 
 type Message interface {
@@ -18,6 +19,7 @@ type Message interface {
 type Interest struct {
     Name string `json:"name"`
     Payload []uint8 `json:"payload"`
+    Nonce string `json:"nonce"`
     HashRestriction []uint8 `json:"hashRestriction"`
     KeyIdRestriction []uint8 `json:"keyIdRestriction"`
 }
@@ -30,9 +32,23 @@ func (i Interest) GetPayload() ([]uint8) {
     return i.Payload;
 }
 
+func (i Interest) GetNonce() (string) {
+    return i.Nonce;
+}
+
 func (i Interest) ProcessAtRouter(router Router, arrivalFace int) {
     name := i.GetName();
-    if router.Fwd.Pit.IsPending(name) {
+
+    isInCache := router.Fwd.Cache.HasData(i.GetName())
+    if isInCache {
+        fmt.Printf("Cache hit for %s %s\n", i.GetName(), i.GetNonce());
+        data := router.Fwd.Cache.GetData(i.GetName());
+
+        // TODO: make a data copy routine
+        newData := Data_CreateSimple(data.GetName(), data.GetPayload(), i.GetNonce());
+        router.SendData(newData, arrivalFace, arrivalFace);
+    } else if router.Fwd.Pit.IsPending(name) {
+        fmt.Printf("Aggregating interest %s %s\n", i.GetName(), i.GetNonce());
         router.Fwd.Pit.AddEntry(i, arrivalFace);
     } else {
         // Insert into the PIT
@@ -55,19 +71,30 @@ func (i Interest) ProcessAtConsumer(consumer Consumer, arrivalFace int) {
 }
 
 func (i Interest) ProcessAtProducer(producer Producer, arrivalFace int) {
-    // fmt.Printf("producer processing interest from face %d\n", arrivalFace);
-    data := Data_CreateSimple(i.GetName(), i.GetPayload());
+    fmt.Printf("producer processing interest %s %s from face %d\n", i.GetName(), i.GetNonce(), arrivalFace);
+    data := Data_CreateSimple(i.GetName(), i.GetPayload(), i.GetNonce());
     producer.SendData(data, arrivalFace);
 }
 
+func makeNonce(length int) (string) {
+    runes := []rune("0123456789");
+    nonce := make([]rune, length);
+    for i := 0; i < length; i++ {
+        nonce[i] = runes[rand.Intn(len(runes))];
+    }
+    return string(nonce);
+}
+
 func Interest_CreateSimple(name string) (Interest) {
-    Interest := Interest{Name: name, Payload: []uint8{0x00}, HashRestriction: []uint8{0x00}, KeyIdRestriction: []uint8{0x00}};
+    nonce := makeNonce(10);
+    Interest := Interest{Name: name, Payload: []uint8{0x00}, Nonce: nonce, HashRestriction: []uint8{0x00}, KeyIdRestriction: []uint8{0x00}};
     return Interest;
 }
 
 type Data struct {
     Name string `json:"name"`
     Payload []uint8 `json:"payload"`
+    Nonce string `json:"string"`
 }
 
 func (d Data) GetName() (string) {
@@ -85,11 +112,14 @@ func (d Data) ProcessAtRouter(router Router, arrivalFace int) {
         entries := router.Fwd.Pit.GetEntries(name);
         router.Fwd.Pit.RemoveEntry(name);
 
+        router.Fwd.Cache.AddData(d);
+
         // forward to all entries...
         for i := 0; i < len(entries); i++ {
             entry := entries[i];
             targetFace := entry.arrivalFace;
-            router.SendData(d, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
+            data := Data_CreateSimple(d.GetName(), d.GetPayload(), entry.msg.GetNonce());
+            router.SendData(data, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
         }
     } else {
         fmt.Println("not pending!!");
@@ -97,15 +127,20 @@ func (d Data) ProcessAtRouter(router Router, arrivalFace int) {
 }
 
 func (d Data) ProcessAtConsumer(consumer Consumer, face int) {
-    fmt.Println("consumer processing data");
+    fmt.Printf("consumer processing data %s %s\n", d.GetName(), d.GetNonce());
+
 }
 
 func (d Data) ProcessAtProducer(producer Producer, face int) {
     fmt.Println("producer processing data");
 }
 
-func Data_CreateSimple(name string, payload []uint8) (Data) {
-    Data := Data{Name: name, Payload: payload};
+func (d Data) GetNonce() (string) {
+    return d.Nonce;
+}
+
+func Data_CreateSimple(name string, payload []uint8, nonce string) (Data) {
+    Data := Data{Name: name, Payload: payload, Nonce: nonce};
     return Data;
 }
 
@@ -242,7 +277,6 @@ func (p PitTable) GetEntries(name string) ([]PitEntryRecord) {
     return val.Records;
 }
 
-// TODO: left off here -- fixing the PitEntry contents
 func (p PitTable) AddEntry(msg Interest, arrivalFace int) {
     name := msg.GetName();
     if val, ok := p.Table[name]; ok {
@@ -262,8 +296,23 @@ func (p PitTable) IsPending(name string) (bool) {
     return ok;
 }
 
-type cache struct {
+type ContentStore struct {
     Cache map[string]Data `json:"cache"`
+}
+func (c ContentStore) GetData(name string) (Data) {
+    val, _ := c.Cache[name];
+    return val;
+}
+
+func (c ContentStore) AddData(d Data) {
+    if _, ok := c.Cache[d.GetName()]; !ok {
+        c.Cache[d.GetName()] = d;
+    }
+}
+
+func (c ContentStore) HasData(name string) (bool) {
+    _, ok := c.Cache[name];
+    return ok;
 }
 
 type link struct {
@@ -340,7 +389,7 @@ type Forwarder struct {
     ProcessingPackets chan QueuedMessage
 
     Fib *FibTable
-    Cache *cache
+    Cache *ContentStore
     Pit *PitTable
 }
 
@@ -441,7 +490,6 @@ func (c Consumer) Tick(time int) {
                 break;
             }
             realMsg := msg.GetMessage();
-            fmt.Printf("Processing message at %d\n", time);
             realMsg.ProcessAtConsumer(c, msg.GetArrivalFace()); // the arrival face is the arrival face
         };
         doneUpwardsProcessing <- 1;
@@ -458,7 +506,7 @@ func (c Consumer) SendInterest(msg Interest) {
 
     arrivalFace := defaultFace;
     targetFace := defaultFace;
-    fmt.Printf("Sending interest to face %d\n", targetFace);
+    fmt.Printf("Sending interest %s %s to face %d\n", msg.GetName(), msg.GetNonce(), targetFace);
     err := queue.PushBack(msg, arrivalFace, targetFace);
     if (err != nil) {
         fmt.Println(err.Error());
@@ -483,7 +531,7 @@ func consumer_Create(id string) (*Consumer) {
 
     fwd := &Forwarder{id, []int{defaultFace}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
-        &FibTable{Table: make(map[string]FibTableEntry)}, &cache{},
+        &FibTable{Table: make(map[string]FibTableEntry)}, &ContentStore{},
         &PitTable{Table: make(map[string]PitEntry)}};
     consumer := &Consumer{fwd};
     return consumer;
@@ -543,7 +591,7 @@ func producer_Create(id string) (*Producer) {
 
     fwd := &Forwarder{id, []int{defaultFace}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
-        &FibTable{Table: make(map[string]FibTableEntry)}, &cache{},
+        &FibTable{Table: make(map[string]FibTableEntry)}, &ContentStore{},
         &PitTable{Table: make(map[string]PitEntry)}};
     producer := &Producer{fwd};
     return producer;
@@ -609,7 +657,7 @@ func router_Create(id string) (*Router) {
 
     fwd := &Forwarder{id, []int{defaultFace, 2}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
-        &FibTable{Table: make(map[string]FibTableEntry)}, &cache{},
+        &FibTable{Table: make(map[string]FibTableEntry)}, &ContentStore{make(map[string]Data)},
         &PitTable{make(map[string]PitEntry)}};
     router := &Router{fwd};
     return router;
