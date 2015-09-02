@@ -30,7 +30,7 @@ type Message interface {
 }
 
 type Interest struct {
-    NetworkMessage msg;
+    NetworkMessage
     Name string `json:"name"`
     Payload []uint8 `json:"payload"`
     HashRestriction []uint8 `json:"hashRestriction"`
@@ -100,13 +100,13 @@ func makeNonce(length int) (string) {
 
 func Interest_CreateSimple(name string) (Interest) {
     nonce := makeNonce(10);
-    networkMsg := NetworkMessage{Nonce: nonce, HopCount: 100};
-    Interest := Interest{networkMsg, Name: name, Payload: []uint8{0x00}, Nonce: nonce,
+    Interest := Interest{Nonce: nonce, HopCount: 100, Name: name, Payload: []uint8{0x00},
         HashRestriction: []uint8{0x00}, KeyIdRestriction: []uint8{0x00}};
     return Interest;
 }
 
 type Data struct {
+    NetworkMessage
     Name string `json:"name"`
     Payload []uint8 `json:"payload"`
     Nonce string `json:"string"`
@@ -133,7 +133,7 @@ func (d Data) ProcessAtRouter(router Router, arrivalFace int) {
         for i := 0; i < len(entries); i++ {
             entry := entries[i];
             targetFace := entry.arrivalFace;
-            networkMsg := NetworkMessage{Nonce: entry.msg.GetNonce(), HopCount: entry.msg.msg.GetHopCount()}
+            networkMsg := NetworkMessage{Nonce: entry.msg.GetNonce(), HopCount: entry.msg.GetHopCount()}
             data := Data_CreateSimple(d.GetName(), d.GetPayload(), entry.msg.GetNonce());
             router.SendData(data, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
         }
