@@ -513,7 +513,7 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
             newArrival := msg.GetTargetFace();
 
             fmt.Printf("%s moving message from %d to %d\n", f.Identity, newArrival, newTarget);
-            queuedMessage := QueuedMessage{msg.GetMessage(), processingTime, newTarget, newArrival};
+            queuedMessage := QueuedMessage{Msg: msg.GetMessage(), TicksLeft: processingTime, TargetFace: newTarget, ArrivalFace: newArrival};
             f.ProcessingPackets <- queuedMessage
         }
     }
@@ -663,7 +663,7 @@ func (r Router) Tick(time int) {
                 break;
             }
             realMsg := msg.GetMessage();
-            realMsg.ProcessAtRouter(r, msg.GetArrivalFace()); // the arrival face is... the arrival face
+            realMsg.ProcessAtRouter(r, msg.GetTargetFace());
         };
         doneUpwardsProcessing <- 1;
     }();
@@ -739,6 +739,9 @@ func connect(fwd1 *Forwarder, face1 int, fwd2 *Forwarder, face2 int, prefix stri
         fwd2.FaceLinks[face2] = link;
     }
     fwd2.FaceLinkQueues[face2] = fwd1.InputFaceQueues[face1];
+
+    // repr, _ := json.Marshal(fwd2.InputFaceQueues);
+    // fmt.Println(string(repr));
 
     // face connection
     fwd1.FaceToFace[face1] = face2;
