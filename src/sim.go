@@ -806,8 +806,8 @@ func main() {
                 consumer.SendInterest(msg);
 
                 // 2. create timeout to send another one
-                // eventB := Event{desc, timeout}
-                // events.PushBack(eventB)
+                eventB := Event{desc, timeout}
+                events.PushBack(eventB)
             }
         }
 
