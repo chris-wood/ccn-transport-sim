@@ -55,17 +55,14 @@ func (i Interest) ProcessAtRouter(router Router, arrivalFace int) {
 
     isInCache := router.Fwd.Cache.HasData(i.GetName())
     if isInCache {
-        fmt.Printf("Cache hit for %s %s\n", i.GetName(), i.GetNonce());
         data := router.Fwd.Cache.GetData(i.GetName());
 
         networkMsg := NetworkMessage{Nonce: i.GetNonce(), HopCount: i.GetHopCount()};
         newData := Data_CreateSimple(networkMsg, data.GetName(), data.GetPayload(), i.GetNonce());
         router.SendData(newData, arrivalFace, arrivalFace);
     } else if router.Fwd.Pit.IsPending(name) {
-        fmt.Printf("%s Aggregating interest %s %s\n",router.Fwd.Identity, i.GetName(), i.GetNonce());
         router.Fwd.Pit.AddEntry(i, arrivalFace);
     } else {
-        fmt.Printf("%s inserting %s into pit from face %d\n", router.Fwd.Identity, i.GetName(), arrivalFace);
 
         // Insert into the PIT
         router.Fwd.Pit.AddEntry(i, arrivalFace);
@@ -89,7 +86,6 @@ func (i Interest) ProcessAtConsumer(consumer Consumer, arrivalFace int) {
 }
 
 func (i Interest) ProcessAtProducer(producer Producer, arrivalFace int) {
-    fmt.Printf("producer processing interest %s %s from face %d\n", i.GetName(), i.GetNonce(), arrivalFace);
     networkMsg := NetworkMessage{Nonce: i.GetNonce(), HopCount: i.GetHopCount()};
     data := Data_CreateSimple(networkMsg, i.GetName(), i.GetPayload(), i.GetNonce());
     producer.SendData(data, arrivalFace);
@@ -134,20 +130,17 @@ func (d Data) GetPayload() ([]uint8) {
 }
 
 func (d Data) ProcessAtRouter(router Router, arrivalFace int) {
-    // fmt.Println("router processing data");
     name := d.GetName();
     if router.Fwd.Pit.IsPending(name) {
         entries := router.Fwd.Pit.GetEntries(name);
         router.Fwd.Pit.RemoveEntry(name);
 
         router.Fwd.Cache.AddData(d);
-        fmt.Printf("%s caching and forwarding %s\n", router.Fwd.Identity, d.GetName());
 
         // forward to all entries...
         for i := 0; i < len(entries); i++ {
             entry := entries[i];
             targetFace := entry.arrivalFace;
-            fmt.Printf("%s forwarding to face %d\n", router.Fwd.Identity, targetFace); // TODO: this should be sending to face 1, not face 2
             networkMsg := NetworkMessage{Nonce: entry.msg.GetNonce(), HopCount: entry.msg.GetHopCount() - 1};
             data := Data_CreateSimple(networkMsg, d.GetName(), d.GetPayload(), entry.msg.GetNonce());
             router.SendData(data, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
@@ -159,7 +152,6 @@ func (d Data) ProcessAtRouter(router Router, arrivalFace int) {
 
 func (d Data) ProcessAtConsumer(consumer Consumer, face int) {
     fmt.Printf("consumer processing data %s %s %d\n", d.GetName(), d.GetNonce(), d.GetHopCount());
-
 }
 
 func (d Data) ProcessAtProducer(producer Producer, face int) {
@@ -445,8 +437,6 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
                 if (msg.Ticks() > 0) {
                     link.Stage <- QueuedMessage{msg.GetMessage(), msg.Ticks() - 1, msg.GetTargetFace(), msg.GetArrivalFace()};
                 } else {
-                    fmt.Printf("%s done transmitting %s from face %d, putting into %d\n", f.Identity, msg.GetMessage().GetNonce(), msg.GetArrivalFace(), msg.GetTargetFace());
-
                     // arrival: output from sender, so the corresponding queue is the input queue at the receiver
                     queue := f.FaceLinkQueues[msg.GetArrivalFace()];
                     queue.PushBackQueuedMessage(msg);
@@ -513,7 +503,6 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
             newTarget := f.FaceToFace[msg.GetTargetFace()];
             newArrival := msg.GetTargetFace();
 
-            fmt.Printf("%s moving message from %d to %d\n", f.Identity, newArrival, newTarget);
             queuedMessage := QueuedMessage{Msg: msg.GetMessage(), TicksLeft: processingTime, TargetFace: newTarget, ArrivalFace: newArrival};
 
             f.ProcessingPackets <- queuedMessage
@@ -552,10 +541,8 @@ func (c Consumer) SendInterest(msg Interest) {
     appFace := 0;
     queue := c.Fwd.OutputFaceQueues[defaultFace];
 
-    targetFace := defaultFace;
-    fmt.Printf("Sending interest %s %s to face %d\n", msg.GetName(), msg.GetNonce(), targetFace);
-
     // send interest from LOCAL FACE to DEFAULT FACE
+    targetFace := defaultFace;
 
     err := queue.PushBack(msg, appFace, targetFace);
     if (err != nil) {
@@ -789,7 +776,6 @@ func main() {
     connect(consumer.Fwd, 1, router1.Fwd, 1, "/foo");
     connect(router1.Fwd, 2, router2.Fwd, 1, "/foo");
     connect(router2.Fwd, 2, producer.Fwd, 1, "/foo");
-    // connect(router.Fwd, 2, producer.Fwd, 1, "/foo");
 
     for i := 1; i <= simulationTime; i++ {
 
