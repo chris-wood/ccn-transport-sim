@@ -66,16 +66,17 @@ func (i Interest) ProcessAtRouter(router Router, arrivalFace int) {
         router.Fwd.Pit.AddEntry(i, arrivalFace);
     } else {
         fmt.Printf("%s inserting %s into pit from face %d\n", router.Fwd.Identity, i.GetName(), arrivalFace);
+
         // Insert into the PIT
         router.Fwd.Pit.AddEntry(i, arrivalFace);
 
         // Forward along
         faces, err := router.Fwd.Fib.GetInterfacesForPrefix(i.GetName());
         if err == nil {
-            targetFace := faces[0];
+            targetFace := faces[0]; // strategy: first record in the longest FIB entry
             networkMsg := NetworkMessage{i.GetNonce(), i.GetHopCount() - 1};
             newInterest := i.Copy(networkMsg);
-            router.SendInterest(newInterest, arrivalFace, targetFace); // strategy: first record in the longest FIB entry
+            router.SendInterest(newInterest, arrivalFace, targetFace);
         } else {
             fmt.Println(err.Error());
             // NOT IN FIB, drop.
