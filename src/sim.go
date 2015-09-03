@@ -464,10 +464,10 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
         } else {
             // ticksLeft := link.txTime(len(msg.GetPayload()));
             ticksLeft := 2;
-            link := f.FaceLinks[msg.GetTargetFace()];
 
             // target: input face on receiver
             // arrival: output face on sender
+            link := f.FaceLinks[msg.GetArrivalFace()];
 
             stagedMsg := QueuedMessage{msg.GetMessage(), ticksLeft, msg.GetTargetFace(), msg.GetArrivalFace()};
             err := link.PushBack(stagedMsg);
@@ -514,6 +514,7 @@ func (f *Forwarder) Tick(time int, upward chan StagedMessage, doneChannel chan i
 
             fmt.Printf("%s moving message from %d to %d\n", f.Identity, newArrival, newTarget);
             queuedMessage := QueuedMessage{Msg: msg.GetMessage(), TicksLeft: processingTime, TargetFace: newTarget, ArrivalFace: newArrival};
+
             f.ProcessingPackets <- queuedMessage
         }
     }
