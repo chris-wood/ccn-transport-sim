@@ -4,7 +4,7 @@ import "fmt"
 import "os"
 import "strconv"
 import "container/list"
-import _ "ccnsim"
+import "ccnsim"
 
 func main() {
     fmt.Println("ccn-transport-sim v0.0.0");
@@ -23,7 +23,7 @@ func main() {
     // test events
     desc := "Send interest command";
     timeout := 5; // every 5 ticks
-    eventA := Event{desc, timeout}
+    eventA := ccnsim.Event{desc, timeout}
     events.PushBack(eventA);
 
     // network elements
