@@ -42,27 +42,3 @@ func (c Consumer) SendInterest(msg Interest) {
         fmt.Println(err.Error());
     }
 }
-
-func consumer_Create(id string) (*Consumer) {
-    outputFaceMap := make(map[int]queue);
-    inputFaceMap := make(map[int]queue);
-    faceLinkMap := make(map[int]link);
-    faceLinkMapQueues := make(map[int]queue);
-    faceToFace := make(map[int]int);
-    ofifo := queue{make(chan StagedMessage, 100), 10};
-    ififo := queue{make(chan StagedMessage, 100), 10};
-    link := link{make(chan StagedMessage, 10), 10, 0.0, 1000}
-    processingPackets := make(chan QueuedMessage, 10)
-
-    defaultFace := 1;
-    outputFaceMap[defaultFace] = ofifo;
-    inputFaceMap[defaultFace] = ififo;
-    faceLinkMap[defaultFace] = link;
-
-    fwd := &Forwarder{id, []int{defaultFace}, outputFaceMap, inputFaceMap, faceLinkMap,
-        faceLinkMapQueues, faceToFace, processingPackets,
-        &FibTable{Table: make(map[string]FibTableEntry)}, &ContentStore{},
-        &PitTable{Table: make(map[string]PitEntry)}};
-    consumer := &Consumer{fwd};
-    return consumer;
-}

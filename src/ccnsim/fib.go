@@ -1,5 +1,8 @@
 package ccnsim
 
+import "strings"
+import "fmt"
+
 type FibTableEntry struct {
     Prefix string `json:"prefix"`
     Interfaces []int `json:"interface"`
