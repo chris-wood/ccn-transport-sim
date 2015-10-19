@@ -27,38 +27,40 @@ func main() {
     events.PushBack(eventA);
 
     // network elements
-    consumer := consumer_Create("consumer1");
-    producer := producer_Create("producer1");
-    router1 := router_Create("router1");
-    router2 := router_Create("router2");
+    sim := ccnsim.Simulator{};
+    consumer := sim.Consumer_Create("consumer1");
+    producer := sim.Producer_Create("producer1");
+    router1 := sim.Router_Create("router1");
+    router2 := sim.Router_Create("router2");
 
-    nodes := make([]Runnable, 4);
+    nodes := make([]ccnsim.Runnable, 4);
     nodes[0] = consumer;
     nodes[1] = router1;
     nodes[2] = router2;
     nodes[3] = producer;
 
     // Make some connections
-    connect(consumer.Fwd, 1, router1.Fwd, 1, "/foo");
-    connect(router1.Fwd, 2, router2.Fwd, 1, "/foo");
-    connect(router2.Fwd, 2, producer.Fwd, 1, "/foo");
+    // TODO: link and route
+    sim.Connect(consumer.Fwd, 1, router1.Fwd, 1, "/foo");
+    sim.Connect(router1.Fwd, 2, router2.Fwd, 1, "/foo");
+    sim.Connect(router2.Fwd, 2, producer.Fwd, 1, "/foo");
 
     for i := 1; i <= simulationTime; i++ {
 
         // event processing pipeline
         for e := events.Front(); e != nil; e = e.Next() {
             events.Remove(e);
-            event := e.Value.(Event);
-            if event.val > 0 {
-                eventB := Event{event.desc, event.val - 1}
+            event := e.Value.(ccnsim.Event);
+            if event.Val > 0 {
+                eventB := ccnsim.Event{event.Desc, event.Val - 1}
                 deferredEvents.PushBack(eventB);
             } else {
                 // 1. send an interest
-                msg := Interest_CreateSimple("/foo/bar");
+                msg := ccnsim.Interest_CreateSimple("/foo/bar");
                 consumer.SendInterest(msg);
 
                 // 2. create timeout to send another one
-                eventB := Event{desc, timeout}
+                eventB := ccnsim.Event{desc, timeout}
                 events.PushBack(eventB)
             }
         }
