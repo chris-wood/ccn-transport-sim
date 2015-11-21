@@ -1,4 +1,4 @@
-package ccnsim
+package core
 
 type ContentStore struct {
     Cache map[string]Data `json:"cache"`

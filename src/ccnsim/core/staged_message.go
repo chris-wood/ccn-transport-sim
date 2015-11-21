@@ -1,4 +1,4 @@
-package ccnsim
+package core
 
 type StagedMessage interface {
     GetMessage() Message;

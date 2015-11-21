@@ -1,13 +1,13 @@
-package ccnsim
+package core
 
-type link struct {
+type Link struct {
     Stage chan StagedMessage `json:"stage"`
     Capacity int `json:"capacity"`
     Pfail float32 `json:"pfail"`
     Rate float32 `json:"rate"`
 }
 
-func (l link) txTime(size int) (int) {
+func (l Link) txTime(size int) (int) {
     pktTime := int(float32(size) / l.Rate);
     return pktTime;
 }
@@ -20,7 +20,7 @@ func (lfe LinkFullError) Error() (string) {
     return lfe.desc;
 }
 
-func (l link) PushBack(msg StagedMessage) (error) {
+func (l Link) PushBack(msg StagedMessage) (error) {
     if (len(l.Stage) < l.Capacity) {
         l.Stage <- msg;
         return nil;

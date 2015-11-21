@@ -1,6 +1,6 @@
-package ccnsim
+package core
 
-type queue struct {
+type Queue struct {
     Fifo chan StagedMessage `json:"fifo"`
     Capacity int `json:"size"`
 }
@@ -13,7 +13,7 @@ func (qfe QueueFullError) Error() (string) {
     return qfe.desc;
 }
 
-func (q queue) PushBackQueuedMessage(msg StagedMessage) (error) {
+func (q Queue) PushBackQueuedMessage(msg StagedMessage) (error) {
     if (len(q.Fifo) < q.Capacity) {
         q.Fifo <- msg;
         return nil;
@@ -23,7 +23,7 @@ func (q queue) PushBackQueuedMessage(msg StagedMessage) (error) {
 }
 
 
-func (q queue) PushBack(msg Message, arrivalFace int, targetFace int) (error) {
+func (q Queue) PushBack(msg Message, arrivalFace int, targetFace int) (error) {
     if (len(q.Fifo) < q.Capacity) {
         stagedMessage := QueuedMessage{Msg: msg, TicksLeft: 0, TargetFace: targetFace, ArrivalFace: arrivalFace};
         q.PushBackQueuedMessage(stagedMessage);

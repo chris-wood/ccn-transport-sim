@@ -1,4 +1,4 @@
-package ccnsim
+package core
 
 type NetworkMessage struct {
     Nonce string `json:"nonce"`

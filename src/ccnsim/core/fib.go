@@ -1,4 +1,4 @@
-package ccnsim
+package core
 
 import "strings"
 import "fmt"

@@ -1,4 +1,4 @@
-package ccnsim
+package core
 
 type QueuedMessage struct {
     Msg Message `json:"msg"`

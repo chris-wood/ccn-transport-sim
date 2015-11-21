@@ -5,6 +5,7 @@ import "os"
 import "strconv"
 import "container/list"
 import "ccnsim"
+import "ccnsim/core"
 
 func main() {
     fmt.Println("ccn-transport-sim v0.0.0");
@@ -23,7 +24,7 @@ func main() {
     // test events
     desc := "Send interest command";
     timeout := 5; // every 5 ticks
-    eventA := ccnsim.Event{desc, timeout}
+    eventA := core.Event{desc, timeout}
     events.PushBack(eventA);
 
     // network elements
@@ -50,17 +51,17 @@ func main() {
         // event processing pipeline
         for e := events.Front(); e != nil; e = e.Next() {
             events.Remove(e);
-            event := e.Value.(ccnsim.Event);
+            event := e.Value.(core.Event);
             if event.Val > 0 {
-                eventB := ccnsim.Event{event.Desc, event.Val - 1}
+                eventB := core.Event{event.Desc, event.Val - 1}
                 deferredEvents.PushBack(eventB);
             } else {
                 // 1. send an interest
-                msg := ccnsim.Interest_CreateSimple("/foo/bar");
+                msg := core.Interest_CreateSimple("/foo/bar");
                 consumer.SendInterest(msg);
 
                 // 2. create timeout to send another one
-                eventB := ccnsim.Event{desc, timeout}
+                eventB := core.Event{desc, timeout}
                 events.PushBack(eventB)
             }
         }
