@@ -1,9 +1,8 @@
 package core
 
-import "fmt"
-
 type Producer struct {
     Fwd *Forwarder
+    AppFace int
 }
 
 func (p Producer) Tick(time int) {
@@ -19,7 +18,8 @@ func (p Producer) Tick(time int) {
                 break;
             }
             networkMessage := msg.GetMessage();
-            networkMessage.ProcessAtProducer(p, msg.GetTargetFace()); // the arrival face is the same as the target face
+            incomingFace := msg.GetDstFace();
+            networkMessage.ProcessAtProducer(p, incomingFace);
         };
         doneUpwardsProcessing <- 1;
     }();
@@ -28,11 +28,6 @@ func (p Producer) Tick(time int) {
     <-doneUpwardsProcessing; // wait until we're done processing the upper-layer messages
 }
 
-func (p Producer) SendData(msg Data, targetFace int) {
-    queue := p.Fwd.OutputFaceQueues[targetFace];
-    appFace := 0;
-    err := queue.PushBack(msg, appFace, targetFace);
-    if (err != nil) {
-        fmt.Println(err.Error());
-    }
+func (p Producer) SendData(msg Data, incomingFace int) {
+    p.Fwd.AddOutboundMessage(msg, p.AppFace, incomingFace);
 }

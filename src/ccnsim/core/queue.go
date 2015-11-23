@@ -23,9 +23,9 @@ func (q Queue) PushBackQueuedMessage(msg StagedMessage) (error) {
 }
 
 
-func (q Queue) PushBack(msg Message, arrivalFace int, targetFace int) (error) {
+func (q Queue) PushBack(msg Message, srcFace int, dstFace int) (error) {
     if (len(q.Fifo) < q.Capacity) {
-        stagedMessage := QueuedMessage{Msg: msg, TicksLeft: 0, TargetFace: targetFace, ArrivalFace: arrivalFace};
+        stagedMessage := QueuedMessage{Msg: msg, TicksLeft: 0, SrcFace: srcFace, DstFace: dstFace};
         q.PushBackQueuedMessage(stagedMessage);
         return nil;
     } else {

@@ -3,6 +3,6 @@ package core
 type StagedMessage interface {
     GetMessage() Message;
     Ticks() int;
-    GetArrivalFace() int;
-    GetTargetFace() int;
+    GetSrcFace() int;
+    GetDstFace() int;
 }

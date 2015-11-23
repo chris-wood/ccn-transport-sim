@@ -34,17 +34,25 @@ func main() {
     router1 := sim.Router_Create("router1");
     router2 := sim.Router_Create("router2");
 
-    nodes := make([]ccnsim.Runnable, 4);
+    // TODO: create and use the network wrapper
+    //network := core.Network();
+
+    nodes := make([]core.Runnable, 4);
     nodes[0] = consumer;
     nodes[1] = router1;
     nodes[2] = router2;
     nodes[3] = producer;
 
+    // Create some links
+    link1 := core.Link{make(chan core.StagedMessage, 10), 10, 0.0, 1000};
+    link2 := core.Link{make(chan core.StagedMessage, 10), 10, 0.0, 1000};
+    link3 := core.Link{make(chan core.StagedMessage, 10), 10, 0.0, 1000};
+
     // Make some connections
     // TODO: link and route
-    sim.Connect(consumer.Fwd, 1, router1.Fwd, 1, "/foo");
-    sim.Connect(router1.Fwd, 2, router2.Fwd, 1, "/foo");
-    sim.Connect(router2.Fwd, 2, producer.Fwd, 1, "/foo");
+    sim.Connect(consumer.Fwd, 1, router1.Fwd, 1, "/foo", link1);
+    sim.Connect(router1.Fwd, 2, router2.Fwd, 1, "/foo", link2);
+    sim.Connect(router2.Fwd, 2, producer.Fwd, 1, "/foo", link3);
 
     for i := 1; i <= simulationTime; i++ {
 
@@ -66,11 +74,16 @@ func main() {
             }
         }
 
+        // TODO: this will be replaced by calling "tick" on the network -- which ripples to everything inside (nodes and links)
         // move each node along
         for e := 0; e < len(nodes); e++ {
             node := nodes[e];
             node.Tick(i);
         }
+        // move each link along
+        link1.Tick(i);
+        link2.Tick(i);
+        link3.Tick(i);
 
         // ping pong event queues
         tmp := events;

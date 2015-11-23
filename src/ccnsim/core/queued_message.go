@@ -3,16 +3,17 @@ package core
 type QueuedMessage struct {
     Msg Message `json:"msg"`
     TicksLeft int `json:"ticksleft"`
-    TargetFace int `json:"targetface"`
-    ArrivalFace int `json:"arrivalface"`
+
+    SrcFace int `json:"srcFace"`
+    DstFace int `json:"dstFace"`
 }
 
-func (qm QueuedMessage) GetArrivalFace() (int) {
-    return qm.ArrivalFace;
+func (qm QueuedMessage) GetSrcFace() (int) {
+    return qm.SrcFace;
 }
 
-func (qm QueuedMessage) GetTargetFace() (int) {
-    return qm.TargetFace;
+func (qm QueuedMessage) GetDstFace() (int) {
+    return qm.DstFace;
 }
 
 func (qm QueuedMessage) Ticks() (int) {

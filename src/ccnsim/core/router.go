@@ -19,7 +19,7 @@ func (r Router) Tick(time int) {
                 break;
             }
             realMsg := msg.GetMessage();
-            realMsg.ProcessAtRouter(r, msg.GetTargetFace());
+            realMsg.ProcessAtRouter(r, msg.GetDstFace());
         };
         doneUpwardsProcessing <- 1;
     }();

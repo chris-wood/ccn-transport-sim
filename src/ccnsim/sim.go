@@ -7,6 +7,7 @@ import "ccnsim/core"
 type Simulator struct {
 }
 
+
 func makeNonce(length int) (string) {
     runes := []rune("0123456789"); // runes are single-character text encodings by convention
     nonce := make([]rune, length);
@@ -17,6 +18,8 @@ func makeNonce(length int) (string) {
 }
 
 // TODO: move these things to a helper class
+// TODO: move FaceManager to a separate struct
+// the face manager will keep all faces, queues, and link references
 
 func (s Simulator) Consumer_Create(id string) (*core.Consumer) {
     outputFaceMap := make(map[int]core.Queue);
@@ -26,19 +29,19 @@ func (s Simulator) Consumer_Create(id string) (*core.Consumer) {
     faceToFace := make(map[int]int);
     ofifo := core.Queue{make(chan core.StagedMessage, 100), 10};
     ififo := core.Queue{make(chan core.StagedMessage, 100), 10};
-    link := core.Link{make(chan core.StagedMessage, 10), 10, 0.0, 1000}
+//    link := core.Link{make(chan core.StagedMessage, 10), 10, 0.0, 1000}
     processingPackets := make(chan core.QueuedMessage, 10)
 
-    defaultFace := 1;
-    outputFaceMap[defaultFace] = ofifo;
-    inputFaceMap[defaultFace] = ififo;
-    faceLinkMap[defaultFace] = link;
+    defaultNodeFace := 1;
+    outputFaceMap[defaultNodeFace] = ofifo;
+    inputFaceMap[defaultNodeFace] = ififo;
+//    faceLinkMap[defaultNodeFace] = link;
 
-    fwd := &core.Forwarder{id, []int{defaultFace}, outputFaceMap, inputFaceMap, faceLinkMap,
+    fwd := &core.Forwarder{id, []int{defaultNodeFace}, outputFaceMap, inputFaceMap, faceLinkMap,
         faceLinkMapQueues, faceToFace, processingPackets,
         &core.FibTable{Table: make(map[string]core.FibTableEntry)}, &core.ContentStore{},
         &core.PitTable{Table: make(map[string]core.PitEntry)}};
-    consumer := &core.Consumer{fwd};
+    consumer := &core.Consumer{fwd, 0, defaultNodeFace};
     return consumer;
 }
 
@@ -64,7 +67,7 @@ func (s Simulator) Producer_Create(id string) (*core.Producer) {
         faceLinkMapQueues, faceToFace, processingPackets,
         &core.FibTable{Table: make(map[string]core.FibTableEntry)}, &core.ContentStore{},
         &core.PitTable{Table: make(map[string]core.PitEntry)}};
-    producer := &core.Producer{fwd};
+    producer := &core.Producer{fwd, 0};
     return producer;
 }
 
@@ -92,14 +95,14 @@ func (s Simulator) Router_Create(id string) (*core.Router) {
     return router;
 }
 
-func (s Simulator) Connect(fwd1 *core.Forwarder, face1 int, fwd2 *core.Forwarder, face2 int, prefix string) {
+func (s Simulator) Connect(fwd1 *core.Forwarder, face1 int, fwd2 *core.Forwarder, face2 int, prefix string, link core.Link) {
     // face1 --> link1 --> face2 (input Queue)
     fwd1.OutputFaceQueues[face1] = fwd1.OutputFaceQueues[1] // all Queues dump to the default output queue
     if _, ok := fwd2.InputFaceQueues[face2]; !ok {
         fwd2.InputFaceQueues[face2] = core.Queue{make(chan core.StagedMessage, 100), 10};
     }
     if _, ok := fwd1.FaceLinks[face1]; !ok {
-        link := core.Link{make(chan core.StagedMessage, 10), 10, 0.0, 1000}
+        //link := core.Link{make(chan core.StagedMessage, 10), 10, 0.0, 1000}
         fwd1.FaceLinks[face1] = link;
     }
     fwd1.FaceLinkQueues[face1] = fwd2.InputFaceQueues[face2];
@@ -110,7 +113,7 @@ func (s Simulator) Connect(fwd1 *core.Forwarder, face1 int, fwd2 *core.Forwarder
         fwd1.InputFaceQueues[face1] = core.Queue{make(chan core.StagedMessage, 100), 10};
     }
     if _, ok := fwd2.FaceLinks[face1]; !ok {
-        link := core.Link{make(chan core.StagedMessage, 10), 10, 0.0, 1000}
+        //link := core.Link{make(chan core.StagedMessage, 10), 10, 0.0, 1000}
         fwd2.FaceLinks[face2] = link;
     }
     fwd2.FaceLinkQueues[face2] = fwd1.InputFaceQueues[face1];
@@ -124,4 +127,6 @@ func (s Simulator) Connect(fwd1 *core.Forwarder, face1 int, fwd2 *core.Forwarder
 
     // prefix configuration
     fwd1.Fib.AddPrefix(prefix, face1);
+
+    return
 }

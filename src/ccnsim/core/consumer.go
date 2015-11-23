@@ -1,9 +1,9 @@
 package core
 
-import "fmt"
-
 type Consumer struct {
     Fwd *Forwarder
+    AppFace int
+    DefaultFace int
 }
 
 func (c Consumer) Tick(time int) {
@@ -19,7 +19,8 @@ func (c Consumer) Tick(time int) {
                 break;
             }
             realMsg := msg.GetMessage();
-            realMsg.ProcessAtConsumer(c, msg.GetArrivalFace()); // the arrival face is the arrival face
+            incomingFace := msg.GetDstFace();
+            realMsg.ProcessAtConsumer(c, incomingFace);
         };
         doneUpwardsProcessing <- 1;
     }();
@@ -30,15 +31,6 @@ func (c Consumer) Tick(time int) {
 }
 
 func (c Consumer) SendInterest(msg Interest) {
-    defaultFace := c.Fwd.Faces[0];
-    appFace := 0;
-    queue := c.Fwd.OutputFaceQueues[defaultFace];
-
-    // send interest from LOCAL FACE to DEFAULT FACE
-    targetFace := defaultFace;
-
-    err := queue.PushBack(msg, appFace, targetFace);
-    if (err != nil) {
-        fmt.Println(err.Error());
-    }
+//    defaultFace := c.Fwd.Faces[0];
+    c.Fwd.AddOutboundMessage(msg, c.AppFace, c.DefaultFace);
 }
